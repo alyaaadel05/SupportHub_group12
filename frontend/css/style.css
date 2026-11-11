@@ -1,0 +1,143 @@
+
+/* General page styling */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background-color: #f4f7fb;
+    color: #253047;
+}
+
+/* Header and navigation */
+.header {
+    background-color: #203864;
+    color: white;
+    padding: 20px 8%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.header h1 {
+    margin: 0;
+    font-size: 26px;
+}
+
+nav {
+    display: flex;
+    gap: 25px;
+}
+
+nav a {
+    color: white;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+nav a:hover {
+    text-decoration: underline;
+}
+
+/* Main welcome section */
+.hero {
+    text-align: center;
+    padding: 90px 20px;
+    background-color: #e8f0fc;
+}
+
+.hero h2 {
+    font-size: 36px;
+    margin-bottom: 15px;
+}
+
+.hero p {
+    color: #526179;
+    font-size: 18px;
+}
+
+/* Search form */
+#search-form {
+    max-width: 600px;
+    margin: 35px auto 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+#search-form label {
+    font-weight: bold;
+    text-align: left;
+}
+
+#search-input {
+    padding: 15px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font-size: 16px;
+}
+
+button {
+    padding: 14px 22px;
+    background-color: #2563eb;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #1d4ed8;
+}
+
+/* Browse articles section */
+.content {
+    max-width: 1000px;
+    margin: 50px auto;
+    padding: 35px;
+    background-color: white;
+    border-radius: 12px;
+    text-align: center;
+}
+
+.content a {
+    display: inline-block;
+    margin-top: 15px;
+    padding: 12px 20px;
+    color: white;
+    background-color: #2563eb;
+    border-radius: 8px;
+    text-decoration: none;
+}
+
+/* Footer */
+footer {
+    text-align: center;
+    padding: 25px;
+    color: #64748b;
+}
+
+/* Responsive design for small screens */
+@media (max-width: 600px) {
+    .header {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    nav {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .hero h2 {
+        font-size: 28px;
+    }
+
+    .content {
+        margin: 20px;
+    }
+}
+
