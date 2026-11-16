@@ -1,0 +1,63 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SupportHub | Article Editor</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="header">
+    <h1>SupportHub</h1>
+    <nav id="navigation"></nav>
+  </header>
+
+  <main class="page">
+    <section class="panel">
+      <h2>Article Management</h2>
+      <p>Create, edit, and submit articles for editorial review.</p>
+
+      <form id="article-form">
+        <input type="hidden" id="article-id">
+
+        <label for="article-title">Article Title</label>
+        <input id="article-title" maxlength="200" required>
+
+        <label for="article-category">Category</label>
+        <select id="article-category" required></select>
+
+        <label for="article-content">Article Content</label>
+        <textarea id="article-content" rows="9" required></textarea>
+
+        <button type="submit">Save Draft</button>
+        <button type="button" id="clear-form" class="secondary">
+          Clear
+        </button>
+      </form>
+      <p id="editor-message" role="status"></p>
+    </section>
+
+    <section class="panel">
+      <h2>Create Category</h2>
+      <form id="category-form" class="search-row">
+        <input id="category-name" maxlength="80"
+               placeholder="New category name" required>
+        <button type="submit">Add Category</button>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h2>My Articles</h2>
+      <div id="my-articles"></div>
+    </section>
+  </main>
+
+  <footer>© 2026 SupportHub - Group 12</footer>
+
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/editorial.js"></script>
+</body>
+</html>
+
