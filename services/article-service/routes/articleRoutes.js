@@ -1,0 +1,11 @@
+const router=require("express").Router();
+const c=require("../controllers/articleController");
+const {requireRole,requireCsrf,assertOrigin}=require("../middleware/security");
+const secure=[assertOrigin(process.env.FRONTEND_ORIGIN),requireCsrf];
+router.post("/articles/check-duplicates",requireRole("author","reviewer"),...secure,c.duplicates);
+router.get("/articles/mine",requireRole("author","reviewer"),c.mine);
+router.post("/articles",requireRole("author","reviewer"),...secure,c.create);
+router.get("/articles/:id",requireRole("author","reviewer"),c.get);
+router.patch("/articles/:id",requireRole("author","reviewer"),...secure,c.update);
+router.delete("/articles/:id",requireRole("author","reviewer"),...secure,c.remove);
+module.exports=router;
