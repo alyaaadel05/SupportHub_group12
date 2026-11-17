@@ -458,7 +458,7 @@ if (article.status === "draft") {
             await api(
               "/articles/" +
               encodeURIComponent(article.id) +
-              "/submit",
+              "/submissions",
               {
                 method: "POST"
               }

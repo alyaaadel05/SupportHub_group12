@@ -362,8 +362,8 @@ async function transitionStatus(id, from, to) {
        updated_at = NOW(),
        published_at =
          CASE
-           WHEN $1 = 'published' THEN NOW()
-           WHEN $1 = 'draft' THEN NULL
+           WHEN $1::varchar = 'published' THEN NOW()
+           WHEN $1::varchar = 'draft' THEN NULL
            ELSE published_at
          END
      WHERE id = $2
