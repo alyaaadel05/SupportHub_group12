@@ -16,9 +16,10 @@ const {
 const authRoutes = require("./routes/authRoutes");
 
 const app = express();
-const PORT = process.env.PORT || 3003;
 
+const PORT = Number(process.env.PORT || 3003);
 const allowedOrigin = process.env.FRONTEND_ORIGIN;
+const production = process.env.NODE_ENV === "production";
 
 if (!allowedOrigin) {
   throw new Error("FRONTEND_ORIGIN is required");
@@ -26,7 +27,7 @@ if (!allowedOrigin) {
 
 app.disable("x-powered-by");
 
-if (process.env.NODE_ENV === "production") {
+if (production) {
   if (!process.env.TURNSTILE_SECRET_KEY) {
     throw new Error(
       "TURNSTILE_SECRET_KEY is required in production"
@@ -36,27 +37,95 @@ if (process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
 }
 
+// ==========================================
+// 1. SECURITY HEADERS
+// ==========================================
+
 app.use(helmet());
+
+// ==========================================
+// 2. CORS
+// ==========================================
 
 app.use(cors({
   origin: allowedOrigin,
-  credentials: true
+  credentials: true,
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "X-CSRF-Token"
+  ]
 }));
 
-app.use(express.json({ limit: "100kb" }));
+// ==========================================
+// 3. JSON REQUEST HANDLING
+// ==========================================
+
+app.use(express.json({
+  limit: "100kb"
+}));
+
+// ==========================================
+// 4. SESSION MANAGEMENT
+// ==========================================
 
 app.use(sessionMiddleware());
 
 app.use(checkOrigin);
 
-const authLimiter = rateLimit({
+// ==========================================
+// 5. RATE LIMITING
+// ==========================================
+
+// Strict protection for login and registration.
+const sensitiveAuthLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 30,
   standardHeaders: "draft-7",
-  legacyHeaders: false
+  legacyHeaders: false,
+  message: {
+    error: "Too many authentication attempts. Please try again later."
+  }
 });
 
-app.use("/api/auth", authLimiter, authRoutes);
+// A higher limit for ordinary session checks,
+// CSRF retrieval, and logout.
+const sessionLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 300,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: {
+    error: "Too many requests. Please try again later."
+  }
+});
+
+// Restrict sensitive authentication endpoints.
+app.use(
+  "/api/auth/login",
+  sensitiveAuthLimiter
+);
+
+app.use(
+  "/api/auth/register",
+  sensitiveAuthLimiter
+);
+
+// Restrict other authentication requests separately.
+app.use(
+  "/api/auth",
+  sessionLimiter
+);
+
+// ==========================================
+// 6. AUTHENTICATION ROUTES
+// ==========================================
+
+app.use("/api/auth", authRoutes);
+
+// ==========================================
+// 7. HEALTH CHECK
+// ==========================================
 
 app.get("/api/health", async (req, res) => {
   try {
@@ -67,6 +136,7 @@ app.get("/api/health", async (req, res) => {
       service: "identity-service",
       database: "connected"
     });
+
   } catch (error) {
     console.error(
       "Database health check failed:",
@@ -81,13 +151,30 @@ app.get("/api/health", async (req, res) => {
   }
 });
 
+// ==========================================
+// 8. UNKNOWN ROUTES
+// ==========================================
+
 app.use((req, res) => {
   res.status(404).json({
     error: "Route not found"
   });
 });
 
+// ==========================================
+// 9. ERROR HANDLING
+// ==========================================
+
 app.use((error, req, res, next) => {
+  if (
+    error.status >= 400 &&
+    error.status < 500
+  ) {
+    return res.status(error.status).json({
+      error: error.message
+    });
+  }
+
   console.error(
     "Identity Service Error:",
     error.message
@@ -97,6 +184,10 @@ app.use((error, req, res, next) => {
     error: "Internal server error"
   });
 });
+
+// ==========================================
+// 10. START SERVER
+// ==========================================
 
 if (require.main === module) {
   app.listen(PORT, () => {

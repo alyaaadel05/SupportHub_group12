@@ -1,0 +1,589 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0">
+
+  <title>SupportHub | Version History</title>
+
+  <link rel="stylesheet" href="css/style.css">
+
+  <style>
+    /* =====================================
+       SUPPORT HUB VERSION HISTORY DESIGN
+       ===================================== */
+
+    :root {
+      --navy: #203d6a;
+      --navy-dark: #152e54;
+      --blue: #2b60e8;
+      --blue-hover: #1e4ecc;
+      --background: #f1f4fa;
+      --white: #ffffff;
+      --text: #19345b;
+      --muted: #60718a;
+      --border: #dce4f0;
+      --success: #18794e;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--background);
+      color: var(--text);
+      font-family: Arial, Helvetica, sans-serif;
+      line-height: 1.6;
+    }
+
+    /* =====================================
+       HEADER
+       ===================================== */
+
+    body > header {
+      background: var(--navy);
+      color: var(--white);
+      width: 100%;
+      padding: 24px max(32px, calc((100% - 1150px) / 2));
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 20px;
+      border: none;
+      border-radius: 0;
+    }
+
+    body > header h1 {
+      margin: 0;
+      padding: 0;
+      font-size: 35px;
+      font-weight: 750;
+      letter-spacing: -1px;
+      color: white;
+      line-height: 1.2;
+    }
+
+    body > header nav {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 24px;
+      margin: 0;
+      padding: 0;
+      width: auto;
+      background: transparent;
+    }
+
+    body > header nav a {
+      color: white;
+      font-size: 16px;
+      font-weight: 600;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    body > header nav a:hover {
+      color: #bcd2ff;
+    }
+
+    body > header nav button {
+      width: auto;
+      background: #637895;
+      color: white;
+      border: none;
+      padding: 12px 22px;
+      border-radius: 9px;
+      font-size: 15px;
+      cursor: pointer;
+      margin: 0;
+    }
+
+    body > header nav button:hover {
+      background: #4b6487;
+    }
+
+    /* =====================================
+       MAIN PAGE
+       ===================================== */
+
+    main.versions-page {
+      display: block;
+      width: min(1100px, calc(100% - 40px));
+      max-width: 1100px;
+      margin: 44px auto 60px;
+      padding: 0;
+      background: transparent;
+    }
+
+    .page-intro {
+      margin-bottom: 28px;
+    }
+
+    .page-intro h1 {
+      color: var(--text);
+      font-size: clamp(27px, 3vw, 36px);
+      line-height: 1.3;
+      margin: 0 0 10px;
+      font-weight: 750;
+    }
+
+    .page-intro p {
+      color: var(--muted);
+      font-size: 16px;
+      margin: 0;
+    }
+
+    /* =====================================
+       CARDS
+       ===================================== */
+
+    .version-card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 30px;
+      margin: 0 0 24px;
+      box-shadow: 0 3px 14px rgba(22, 48, 89, 0.035);
+    }
+
+    .version-card h2 {
+      color: var(--text);
+      font-size: 22px;
+      margin: 0 0 18px;
+      font-weight: 700;
+    }
+
+    .version-card p {
+      color: var(--muted);
+      margin-top: 0;
+    }
+
+    /* =====================================
+       INPUTS
+       ===================================== */
+
+    .version-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: end;
+      gap: 16px;
+    }
+
+    .version-field {
+      flex: 1 1 210px;
+      max-width: 330px;
+      min-width: 0;
+    }
+
+    .version-field label {
+      display: block;
+      font-size: 14px;
+      color: var(--text);
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .versions-page input,
+    .versions-page select {
+      display: block;
+      width: 100%;
+      min-height: 48px;
+      padding: 11px 14px;
+      border: 1px solid #cedaeb;
+      border-radius: 9px;
+      background: white;
+      color: var(--text);
+      font-size: 15px;
+      font-family: inherit;
+      margin: 0;
+    }
+
+    .versions-page input:focus,
+    .versions-page select:focus {
+      outline: 2px solid #91b1ff;
+      border-color: var(--blue);
+    }
+
+    /* =====================================
+       BUTTONS
+       ===================================== */
+
+    .versions-page button {
+      width: auto;
+      min-height: 48px;
+      padding: 12px 22px;
+      border: none;
+      border-radius: 9px;
+      background: var(--blue);
+      color: white;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      margin: 0;
+      transition: background 0.15s;
+    }
+
+    .versions-page button:hover {
+      background: var(--blue-hover);
+    }
+
+    .versions-page button:focus-visible {
+      outline: 3px solid #9fbaff;
+      outline-offset: 2px;
+    }
+
+    .versions-page button.view-button {
+      min-height: 38px;
+      padding: 8px 18px;
+      font-size: 14px;
+    }
+
+    .versions-page button.restore-button {
+      background: #243d66;
+    }
+
+    .versions-page button.restore-button:hover {
+      background: #172e52;
+    }
+
+    /* =====================================
+       MESSAGES
+       ===================================== */
+
+    #version-message {
+      color: var(--success);
+      font-weight: 600;
+      font-size: 14px;
+      margin: 18px 0 0;
+      overflow-wrap: anywhere;
+    }
+
+    /* =====================================
+       HISTORY TABLE
+       ===================================== */
+
+    .table-wrapper {
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    .version-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0;
+      min-width: 400px;
+    }
+
+    .version-table th {
+      background: #f2f5fb;
+      color: #415877;
+      padding: 15px 17px;
+      font-size: 13px;
+      text-align: left;
+      font-weight: 700;
+    }
+
+    .version-table td {
+      border-bottom: 1px solid var(--border);
+      padding: 16px 17px;
+      font-size: 14px;
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    .version-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .version-table tbody tr:hover {
+      background: #f8faff;
+    }
+
+    .version-number {
+      color: #214d9c;
+      font-weight: 700;
+    }
+
+    /* =====================================
+       COMPARISON RESULTS
+       ===================================== */
+
+    .version-result {
+      margin-top: 22px;
+      padding: 22px;
+      background: #f5f8fd;
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+
+    .version-result h3 {
+      font-size: 15px;
+      color: #274b7e;
+      margin: 14px 0 5px;
+    }
+
+    .version-result h3:first-child {
+      margin-top: 0;
+    }
+
+    .version-result p {
+      font-size: 14px;
+      color: var(--text);
+      margin: 0 0 12px;
+    }
+
+    .version-result[hidden] {
+      display: none;
+    }
+
+    /* =====================================
+       FOOTER
+       ===================================== */
+
+    body > footer {
+      background: transparent;
+      color: #73849c;
+      padding: 24px;
+      margin: 0;
+      text-align: center;
+      font-size: 13px;
+    }
+
+    body > footer p {
+      margin: 0;
+      color: inherit;
+    }
+
+    /* =====================================
+       MOBILE
+       ===================================== */
+
+    @media (max-width: 700px) {
+      body > header {
+        padding: 20px;
+        justify-content: center;
+        text-align: center;
+      }
+
+      body > header h1 {
+        font-size: 28px;
+      }
+
+      body > header nav {
+        justify-content: center;
+        gap: 14px;
+      }
+
+      main.versions-page {
+        width: calc(100% - 24px);
+        margin-top: 24px;
+      }
+
+      .version-card {
+        padding: 20px;
+      }
+
+      .version-controls {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .version-field {
+        flex: 1 1 auto;
+        width: 100%;
+        max-width: none;
+      }
+
+      .versions-page button {
+        width: 100%;
+      }
+
+      .versions-page button.view-button {
+        width: auto;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- HEADER -->
+  <header>
+    <h1>SupportHub</h1>
+    <nav id="navigation"></nav>
+  </header>
+
+  <!-- MAIN -->
+  <main class="versions-page">
+
+    <div class="page-intro">
+      <h1>Article Version History</h1>
+      <p>
+        View previous versions, compare changes,
+        and restore an eligible draft.
+      </p>
+    </div>
+
+    <!-- LOAD HISTORY -->
+    <section class="version-card">
+      <h2>Find Article Versions</h2>
+
+      <form id="version-form">
+        <div class="version-controls">
+
+          <div class="version-field">
+            <label for="version-article-id">
+              Article ID
+            </label>
+
+            <input
+              type="number"
+              id="version-article-id"
+              min="1"
+              placeholder="Enter article ID"
+              required
+            >
+          </div>
+
+          <button type="submit">
+            Load Versions
+          </button>
+
+        </div>
+      </form>
+
+      <p
+        id="version-message"
+        role="status"
+      ></p>
+    </section>
+
+    <!-- HISTORY TABLE -->
+    <section class="version-card">
+      <h2>Saved Versions</h2>
+
+      <div class="table-wrapper">
+        <table class="version-table">
+          <thead>
+            <tr>
+              <th>Version</th>
+              <th>Date Created</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+
+          <tbody id="versions-list"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- COMPARISON -->
+    <section class="version-card">
+      <h2>Compare Versions</h2>
+
+      <div class="version-controls">
+
+        <div class="version-field">
+          <label for="compare-from">
+            First Version
+          </label>
+
+          <select id="compare-from">
+            <option value="">
+              Select version
+            </option>
+          </select>
+        </div>
+
+        <div class="version-field">
+          <label for="compare-to">
+            Second Version
+          </label>
+
+          <select id="compare-to">
+            <option value="">
+              Select version
+            </option>
+          </select>
+        </div>
+
+        <button
+          type="button"
+          id="compare-button"
+        >
+          Compare
+        </button>
+
+      </div>
+
+      <div
+        id="comparison-result"
+        class="version-result"
+        hidden
+      ></div>
+    </section>
+
+    <!-- RESTORE -->
+    <section class="version-card">
+      <h2>Restore Previous Version</h2>
+
+      <p>
+        Restore an older version of an eligible draft.
+        Previous versions will remain available.
+      </p>
+
+      <div class="version-controls">
+
+        <div class="version-field">
+          <label for="restore-version">
+            Choose Version
+          </label>
+
+          <select id="restore-version">
+            <option value="">
+              Select version
+            </option>
+          </select>
+        </div>
+
+        <button
+          type="button"
+          id="restore-button"
+          class="restore-button"
+        >
+          Restore Version
+        </button>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer>
+    <p>© 2026 SupportHub - Group 12</p>
+  </footer>
+
+  <!-- JAVASCRIPT -->
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/versions.js"></script>
+
+</body>
+</html>
