@@ -40,7 +40,9 @@ async function loadArticles() {
       params.set("category", categoryFilter.value);
     }
 
-    const result = await api("/articles?" + params.toString());
+    const result = await api(
+      "/public/articles?" + params.toString()
+    );
 
     result.articles.forEach((article) => {
       const card = document.createElement("article");
@@ -48,35 +50,57 @@ async function loadArticles() {
 
       const title = makeElement("h3", article.title);
       const category = makeElement(
-        "p", "Category: " + article.category_name, "muted"
+        "p",
+        "Category: " + article.category_name,
+        "muted"
       );
+
       const content = makeElement("p", article.content);
       content.hidden = true;
 
-      const viewButton = makeElement("button", "Read Article");
+      const viewButton = makeElement(
+        "button",
+        "Read Article"
+      );
+
       let viewed = false;
 
       viewButton.addEventListener("click", async () => {
         content.hidden = !content.hidden;
+
         viewButton.textContent = content.hidden
           ? "Read Article"
           : "Hide Article";
 
         if (!viewed) {
           viewed = true;
+
           try {
-            await api("/articles/" + article.id + "/view", {
-              method: "POST"
-            });
+            const detail = await api(
+              "/public/articles/" +
+                encodeURIComponent(article.id)
+            );
+
+            const fullArticle = detail.article || detail;
+
+            if (typeof fullArticle.content === "string") {
+              content.textContent = fullArticle.content;
+            }
           } catch (error) {
             console.error(error.message);
           }
         }
       });
 
-      const helpfulButton = makeElement("button", "Helpful");
+      const helpfulButton = makeElement(
+        "button",
+        "Helpful"
+      );
+
       const notHelpfulButton = makeElement(
-        "button", "Not Helpful", "secondary"
+        "button",
+        "Not Helpful",
+        "secondary"
       );
 
       helpfulButton.addEventListener("click", () => {
@@ -88,8 +112,12 @@ async function loadArticles() {
       });
 
       card.append(
-        title, category, viewButton, content,
-        helpfulButton, notHelpfulButton
+        title,
+        category,
+        viewButton,
+        content,
+        helpfulButton,
+        notHelpfulButton
       );
 
       articlesList.appendChild(card);
@@ -105,12 +133,16 @@ async function loadArticles() {
 
 async function prepareVote(articleId, helpful) {
   pendingVote = { articleId, helpful };
+
   const voteBox = document.querySelector("#vote-box");
 
   if (!voteBox) return;
 
   voteBox.hidden = false;
-  voteBox.scrollIntoView({ behavior: "smooth" });
+
+  voteBox.scrollIntoView({
+    behavior: "smooth"
+  });
 
   if (!window.SUPPORT_HUB.TURNSTILE_SITE_KEY) {
     await submitVote();
@@ -121,16 +153,23 @@ async function submitVote() {
   if (!pendingVote) return;
 
   try {
-    await api("/articles/" + pendingVote.articleId + "/feedback", {
-      method: "POST",
-      body: {
-        helpful: pendingVote.helpful,
-        turnstileToken: getTurnstileToken("vote-turnstile")
+    await api(
+      "/articles/" + pendingVote.articleId + "/votes",
+      {
+        method: "POST",
+        body: {
+          helpful: pendingVote.helpful,
+          turnstileToken:
+            getTurnstileToken("vote-turnstile")
+        }
       }
-    });
+    );
 
-    articleMessage.textContent = "Thank you for your feedback!";
+    articleMessage.textContent =
+      "Thank you for your feedback!";
+
     pendingVote = null;
+
     document.querySelector("#vote-box").hidden = true;
   } catch (error) {
     articleMessage.textContent = error.message;
@@ -142,7 +181,10 @@ async function submitVote() {
 async function initializeArticles() {
   if (!articlesList) return;
 
-  const urlParams = new URLSearchParams(window.location.search);
+  const urlParams = new URLSearchParams(
+    window.location.search
+  );
+
   articleQuery.value = urlParams.get("q") || "";
 
   const voteBox = document.createElement("div");
@@ -158,7 +200,11 @@ async function initializeArticles() {
   challenge.id = "vote-turnstile";
   voteBox.appendChild(challenge);
 
-  const voteButton = makeElement("button", "Submit Feedback");
+  const voteButton = makeElement(
+    "button",
+    "Submit Feedback"
+  );
+
   voteButton.addEventListener("click", submitVote);
   voteBox.appendChild(voteButton);
 
@@ -177,8 +223,10 @@ async function initializeArticles() {
     loadArticles();
   });
 
-  categoryFilter.addEventListener("change", loadArticles);
+  categoryFilter.addEventListener(
+    "change",
+    loadArticles
+  );
 }
 
 initializeArticles();
-

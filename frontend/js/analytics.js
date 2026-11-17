@@ -1,9 +1,14 @@
 
 async function initializeAnalytics() {
-  const summary = document.getElementById("analytics-summary");
+  const summary = document.getElementById(
+    "analytics-summary"
+  );
+
   if (!summary) return;
 
-  const message = document.getElementById("analytics-message");
+  const message = document.getElementById(
+    "analytics-message"
+  );
 
   try {
     await requireRole(["editor", "admin"]);
@@ -33,7 +38,9 @@ async function initializeAnalytics() {
       summary.appendChild(card);
     });
 
-    const table = document.getElementById("article-performance");
+    const table = document.getElementById(
+      "article-performance"
+    );
 
     result.articlePerformance.forEach(article => {
       const row = document.createElement("tr");
@@ -52,21 +59,28 @@ async function initializeAnalytics() {
       table.appendChild(row);
     });
 
-    const searches = document.getElementById("popular-searches");
+    const searches = document.getElementById(
+      "popular-searches"
+    );
 
     result.popularSearches.forEach(item => {
       const row = document.createElement("p");
-      row.textContent = item.term + " — " + item.count + " searches";
+
+      row.textContent =
+        item.term + " — " + item.count + " searches";
+
       searches.appendChild(row);
     });
 
     if (!result.popularSearches.length) {
-      searches.textContent = "No search activity recorded yet.";
+      searches.textContent =
+        "No search activity recorded yet.";
     }
   } catch (error) {
-    message.textContent = error.message;
+    if (message) {
+      message.textContent = error.message;
+    }
   }
 }
 
 initializeAnalytics();
-
