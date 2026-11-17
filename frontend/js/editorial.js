@@ -412,12 +412,7 @@ async function loadMyArticles() {
         el("p", "Review: " + article.review_comment)
       );
     }
-
-    if (
-      ["draft", "rejected", "outdated"].includes(
-        article.status
-      )
-    ) {
+if (article.status === "draft") {
       // EDIT
       card.appendChild(
         actionButton("Edit", () => {
@@ -495,9 +490,7 @@ async function loadMyArticles() {
     }
 
     // DELETE
-    if (
-      ["draft", "rejected"].includes(article.status)
-    ) {
+   if (article.status === "draft") {
       card.appendChild(
         actionButton("Delete", async () => {
           if (
