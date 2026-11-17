@@ -8,6 +8,9 @@ function apiBaseFor(path) {
   }
 
   const cleanPath = path.split("?")[0];
+  if (/^\/articles\/\d+\/submissions$/.test(cleanPath)) {
+  return origins.editorial;
+}
 
   if (
     cleanPath === "/auth" ||
