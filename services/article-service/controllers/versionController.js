@@ -19,3 +19,45 @@ exports.compare=async(req,res,next)=>{try{
  const second=await version.detail(pool,id,validId(req.query.to),req.user);
  res.json({comparison:version.compareVersions(first,second)});
 }catch(e){next(e);}};
+
+
+const backupService = require("../services/articleBackupService");
+
+// Export article version to S3.
+exports.exportBackup = async (req, res, next) => {
+  try {
+    const result = await backupService.exportVersion(
+      pool,
+      validId(req.params.id),
+      validId(req.params.versionId),
+      req.user
+    );
+
+    await req.app.locals.audit(
+      req,
+      "article.version.export",
+      req.params.id,
+      { versionId: req.params.versionId }
+    );
+
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Retrieve article backup from S3.
+exports.getBackup = async (req, res, next) => {
+  try {
+    const backup = await backupService.retrieveVersion(
+      pool,
+      validId(req.params.id),
+      validId(req.params.versionId),
+      req.user
+    );
+
+    res.json({ backup });
+  } catch (error) {
+    next(error);
+  }
+};
