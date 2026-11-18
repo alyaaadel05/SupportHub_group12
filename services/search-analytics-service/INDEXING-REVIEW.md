@@ -8,7 +8,7 @@ Check that every frequent query made by the Search & Analytics Service is suppor
 |---|---|---|---|
 | search_published_articles | article_id | Primary key | View one article, voting, click logging |
 | search_published_articles | category_id | search_articles_category_idx | Category filter in search |
-| search_logs | search_id | Primary key | Click logging |
+| search_query_logs | search_id | Primary key | Click logging |
 | search_result_clicks | search_id | clicks_search_idx | Click-through rate |
 | article_views | article_id | article_views_id_idx | Most viewed articles |
 | helpfulness_votes | (article_id, user_id) | UNIQUE constraint | One vote per user per article; votes per article |
@@ -18,8 +18,8 @@ Check that every frequent query made by the Search & Analytics Service is suppor
 | # | Table | Query that needs it | Problem without index | Proposed index |
 |---|---|---|---|---|
 | 1 | search_published_articles | Search sorts by `published_at DESC` | Whole table sorted on every search | `(published_at DESC)` |
-| 2 | search_logs | Popular terms and knowledge gaps group by `LOWER(query_text)` | Every search ever logged is scanned for analytics | `(LOWER(query_text))` |
-| 3 | search_logs | Zero-result searches filter `result_count = 0` | Full scan to find failed searches | Partial index on `LOWER(query_text)` where `result_count = 0` |
+| 2 | search_query_logs | Popular terms and knowledge gaps group by `LOWER(query_text)` | Every search ever logged is scanned for analytics | `(LOWER(query_text))` |
+| 3 | search_query_logs | Zero-result searches filter `result_count = 0` | Full scan to find failed searches | Partial index on `LOWER(query_text)` where `result_count = 0` |
 | 4 | article_feedback | Sentiment breakdown filters `sentiment_status = 'completed'` | Full scan of all feedback | `(sentiment_status, sentiment_label)` |
 
 The proposed indexes are in `migrations/002_search_indexes.sql`. They are additive only (no data is changed or deleted) and will be applied after team agreement, because the Neon database is shared.
