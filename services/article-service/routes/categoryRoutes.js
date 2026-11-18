@@ -9,20 +9,23 @@ const {
   assertOrigin
 } = require("../middleware/security");
 
+// Security checks for requests that modify categories.
 const secure = [
   assertOrigin(process.env.FRONTEND_ORIGIN),
   requireCsrf
 ];
 
+// Only authors and administrators can manage categories.
 const authorAccess = requireRole("author", "admin");
 
-// List categories
+// List categories.
+// Publicly accessible because this only returns category names.
 router.get(
   "/categories",
   controller.list
 );
 
-// Create category
+// Create a category.
 router.post(
   "/categories",
   authorAccess,
@@ -30,7 +33,7 @@ router.post(
   controller.create
 );
 
-// Update category
+// Update a category.
 router.patch(
   "/categories/:id",
   authorAccess,
@@ -38,7 +41,7 @@ router.patch(
   controller.update
 );
 
-// Delete category
+// Delete a category.
 router.delete(
   "/categories/:id",
   authorAccess,
@@ -47,4 +50,3 @@ router.delete(
 );
 
 module.exports = router;
-
