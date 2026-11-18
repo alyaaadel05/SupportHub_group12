@@ -10,7 +10,7 @@ const PgSession = require("connect-pg-simple")(session);
 const rateLimit = require("express-rate-limit");
 
 const pool = require("./db/pool");
-const { requireLogin } = require("./middleware/security");
+const { requireLogin, noStore } = require("./middleware/security");
 
 const searchRoutes = require("./routes/searchRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
@@ -101,6 +101,11 @@ const limiter = rateLimit({
 });
 
 app.use("/api", limiter);
+
+// Never cache private responses (analytics, votes, feedback, CSRF, internal).
+app.use("/api/analytics", noStore);
+app.use("/api/articles", noStore);
+app.use("/internal", noStore);
 
 // --------------------------------------
 // 4. HEALTH CHECK
