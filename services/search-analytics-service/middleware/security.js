@@ -50,5 +50,12 @@ function requireEditorialSignature(req, res, next) {
     return res.status(401).json({ error: "Invalid service signature" });
   next();
 }
+// Private responses (logged-in or reviewer data) must never be stored
+// by browsers, proxies or the Vercel CDN.
+function noStore(req, res, next) {
+  res.set("Cache-Control", "no-store, private");
+  res.set("Pragma", "no-cache");
+  next();
+}
 module.exports = { sessionUser, requireLogin, requireReviewer, requireBrowserWrite,
-  makeSignature, requireEditorialSignature };
+  makeSignature, requireEditorialSignature, noStore };
