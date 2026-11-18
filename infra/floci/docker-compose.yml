@@ -11,7 +11,23 @@ services:
       FLOCI_SERVICES_IAM_ENFORCEMENT_ENABLED: "true"
     volumes:
       - floci-data:/app/data
-      - /var/run/docker.sock:/var/run/docker.sock
+
+  article-service:
+    build:
+      context: ../../services/article-service
+    image: supporthub-article-service:local
+    container_name: supporthub-article
+    ports:
+      - "3005:3001"
+    env_file:
+      - ../../services/article-service/.env
+    environment:
+      PORT: "3001"
+      NODE_ENV: production
+      AWS_ENDPOINT_URL: http://floci:4566
+    depends_on:
+      floci:
+        condition: service_started
 
 volumes:
   floci-data:
