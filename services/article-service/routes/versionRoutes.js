@@ -47,4 +47,21 @@ router.post(
   c.restore
 );
 
+
+ // Export an article version to S3
+router.post(
+  "/articles/:id/versions/:versionId/export",
+  authorAccess,
+  ...secure,
+  c.exportBackup
+);
+
+// Retrieve an article version from S3
+router.get(
+  "/articles/:id/versions/:versionId/export",
+  authorAccess,
+  c.getBackup
+);
+
+
 module.exports = router;
