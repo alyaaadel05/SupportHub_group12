@@ -16,7 +16,7 @@ async function search(input) {
   const total = ranked.length;
   const result = ranked.slice((page-1)*10,page*10).map(({ content, ...a }) => ({ ...a, excerpt: content.slice(0, 180) }));
   const logged = await pool.query(
-    `INSERT INTO search_logs(query_text,result_count) VALUES($1,$2) RETURNING search_id`, [q,total]);
+    `INSERT INTO search_query_logs(query_text,result_count) VALUES($1,$2) RETURNING search_id`, [q,total]);
   return { results: result, total, page, pageSize: 10, searchId: logged.rows[0].search_id };
 }
 async function getPublicArticle(value) {
@@ -30,7 +30,7 @@ async function getPublicArticle(value) {
 async function logClick(input) {
   const articleId = id(input.articleId);
   const searchId = id(input.searchId);
-  const { rows } = await pool.query(`SELECT 1 FROM search_logs WHERE search_id=$1`, [searchId]);
+  const { rows } = await pool.query(`SELECT 1 FROM search_query_logs WHERE search_id=$1`, [searchId]);
   if (!rows[0]) throw new HttpError(404, "Search not found");
   const { rowCount } = await pool.query(`SELECT 1 FROM search_published_articles WHERE article_id=$1`, [articleId]);
   if (!rowCount) throw new HttpError(404, "Article not found");
