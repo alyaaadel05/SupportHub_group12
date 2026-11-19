@@ -38,3 +38,10 @@ test("more matching keywords give a higher score", () => {
   const article = { title: "Reset router password", content: "" };
   assert.ok(scoreArticle(article, ["router", "password"]) > scoreArticle(article, ["router"]));
 });
+
+test("category name match adds to the score", () => {
+  const withCategory = scoreArticle({ title: "Help", content: "", category_name: "Billing Support" }, ["billing"]);
+  const without = scoreArticle({ title: "Help", content: "" }, ["billing"]);
+  assert.equal(withCategory, 3);
+  assert.equal(without, 0);
+});

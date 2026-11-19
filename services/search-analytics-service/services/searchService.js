@@ -3,29 +3,34 @@ const { HttpError, id } = require("./http");
 const { getPublishedArticle } = require("./serviceClient");
 const { words, scoreArticle, parseSearch } = require("./ranking");
 async function search(input) {
-  const { q, page, categoryId, terms } = parseSearch(input);
-  // This is intentionally bounded: coursework-sized catalogue, not a full-text engine.
-  // For production-scale search, use PostgreSQL full text indexes and ranked SQL.
-  const { rows } = await pool.query(`SELECT article_id,title,content,category_id,published_at
-    FROM search_published_articles WHERE ($1::bigint IS NULL OR category_id=$1)
-    ORDER BY published_at DESC LIMIT 1000`, [categoryId]);
+  const { q, page, pageSize, categoryId, terms } = parseSearch(input);
+  // Bounded on purpose (see PAGINATION-REVIEW.md). Category names are read-only
+  // reference data from the shared categories table.
+  const { rows } = await pool.query(`SELECT s.article_id, s.title, s.content, s.category_id,
+      c.name AS category_name, s.published_at
+    FROM search_published_articles s LEFT JOIN categories c ON c.id = s.category_id
+    WHERE ($1::bigint IS NULL OR s.category_id = $1)
+    ORDER BY s.published_at DESC LIMIT 1000`, [categoryId]);
   const ranked = rows.map(row => ({ ...row, relevance: scoreArticle(row, terms) }))
     .filter(row => !terms.length || row.relevance > 0)
     .sort((a,b) => b.relevance - a.relevance ||
       new Date(b.published_at) - new Date(a.published_at) || Number(a.article_id) - Number(b.article_id));
   const total = ranked.length;
-  const result = ranked.slice((page-1)*10,page*10).map(({ content, ...a }) => ({ ...a, excerpt: content.slice(0, 180) }));
+  const result = ranked.slice((page - 1) * pageSize, page * pageSize)
+    .map(({ content, ...a }) => ({ ...a, status: "published", excerpt: content.slice(0, 180) }));
   const logged = await pool.query(
     `INSERT INTO search_query_logs(query_text,result_count) VALUES($1,$2) RETURNING search_id`, [q,total]);
-  return { results: result, total, page, pageSize: 10, searchId: logged.rows[0].search_id };
+  return { results: result, total, page, pageSize, searchId: logged.rows[0].search_id };
 }
 async function getPublicArticle(value) {
   const articleId = id(value);
-  const { rows } = await pool.query(`SELECT article_id,title,content,category_id,published_at
-    FROM search_published_articles WHERE article_id=$1`, [articleId]);
+  const { rows } = await pool.query(`SELECT s.article_id, s.title, s.content, s.category_id,
+      c.name AS category_name, s.published_at
+    FROM search_published_articles s LEFT JOIN categories c ON c.id = s.category_id
+    WHERE s.article_id = $1`, [articleId]);
   if (!rows[0]) throw new HttpError(404, "Published article not found");
   await pool.query(`INSERT INTO article_views(article_id) VALUES($1)`, [articleId]);
-  return rows[0];
+  return { ...rows[0], status: "published" };
 }
 async function logClick(input) {
   const articleId = id(input.articleId);
