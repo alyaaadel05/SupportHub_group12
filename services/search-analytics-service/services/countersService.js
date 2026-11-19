@@ -1,0 +1,64 @@
+// Live usage counters in DynamoDB (AWS service 1).
+// Neon stays the source of truth (every search and view is stored there);
+// DynamoDB keeps fast running totals per search term and per article.
+// A DynamoDB failure never breaks search: it is logged and skipped.
+const { UpdateCommand, ScanCommand } = require("@aws-sdk/lib-dynamodb");
+const { dynamo } = require("./awsClients");
+
+function tableName() { return process.env.DYNAMODB_COUNTERS_TABLE || ""; }
+function termKey(term) { return "TERM#" + String(term).toLowerCase().trim().slice(0, 100); }
+function articleKey(articleId) { return "ARTICLE#" + String(articleId); }
+
+async function add(pk, values) {
+  const table = tableName();
+  if (!table) return { ok: false, skipped: true };
+  const names = {}, vals = { ":now": new Date().toISOString() }, parts = [];
+  Object.entries(values).forEach(([field, amount], i) => {
+    names["#f" + i] = field;
+    vals[":v" + i] = amount;
+    parts.push("#f" + i + " :v" + i);
+  });
+  try {
+    await dynamo.send(new UpdateCommand({
+      TableName: table,
+      Key: { pk },
+      UpdateExpression: "ADD " + parts.join(", ") + " SET updatedAt = :now",
+      ExpressionAttributeNames: names,
+      ExpressionAttributeValues: vals
+    }));
+    return { ok: true };
+  } catch (error) {
+    console.error("DynamoDB counter update failed:", error.name || "Error");
+    return { ok: false };
+  }
+}
+
+function recordSearch(query, resultCount) {
+  const q = String(query || "").trim();
+  if (!q) return Promise.resolve({ ok: false, skipped: true });
+  return add(termKey(q), { searches: 1, zeroResults: resultCount === 0 ? 1 : 0 });
+}
+
+function recordView(articleId) {
+  return add(articleKey(articleId), { views: 1 });
+}
+
+async function liveCounters() {
+  const table = tableName();
+  if (!table) return { available: false, terms: [], articles: [] };
+  try {
+    const { Items = [] } = await dynamo.send(new ScanCommand({ TableName: table, Limit: 500 }));
+    const terms = Items.filter(i => i.pk.startsWith("TERM#"))
+      .map(i => ({ term: i.pk.slice(5), searches: i.searches || 0, zeroResults: i.zeroResults || 0 }))
+      .sort((a, b) => b.searches - a.searches).slice(0, 10);
+    const articles = Items.filter(i => i.pk.startsWith("ARTICLE#"))
+      .map(i => ({ articleId: i.pk.slice(8), views: i.views || 0 }))
+      .sort((a, b) => b.views - a.views).slice(0, 10);
+    return { available: true, terms, articles };
+  } catch (error) {
+    console.error("DynamoDB counter read failed:", error.name || "Error");
+    return { available: false, terms: [], articles: [] };
+  }
+}
+
+module.exports = { recordSearch, recordView, liveCounters, termKey, articleKey };

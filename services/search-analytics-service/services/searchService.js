@@ -2,6 +2,7 @@ const pool = require("../db/pool");
 const { HttpError, id } = require("./http");
 const { getPublishedArticle } = require("./serviceClient");
 const { words, scoreArticle, parseSearch } = require("./ranking");
+const counters = require("./countersService");
 async function search(input) {
   const { q, page, pageSize, categoryId, terms } = parseSearch(input);
   // Bounded on purpose (see PAGINATION-REVIEW.md). Category names are read-only
@@ -20,7 +21,8 @@ async function search(input) {
     .map(({ content, ...a }) => ({ ...a, status: "published", excerpt: content.slice(0, 180) }));
   const logged = await pool.query(
     `INSERT INTO search_query_logs(query_text,result_count) VALUES($1,$2) RETURNING search_id`, [q,total]);
-  return { results: result, total, page, pageSize, searchId: logged.rows[0].search_id };
+   counters.recordSearch(q, total); // DynamoDB live counter (never blocks or breaks search)
+    return { results: result, total, page, pageSize, searchId: logged.rows[0].search_id };
 }
 async function getPublicArticle(value) {
   const articleId = id(value);
@@ -30,6 +32,7 @@ async function getPublicArticle(value) {
     WHERE s.article_id = $1`, [articleId]);
   if (!rows[0]) throw new HttpError(404, "Published article not found");
   await pool.query(`INSERT INTO article_views(article_id) VALUES($1)`, [articleId]);
+    counters.recordView(articleId); // DynamoDB live counter
   return { ...rows[0], status: "published" };
 }
 async function logClick(input) {
