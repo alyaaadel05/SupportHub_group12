@@ -7,6 +7,7 @@ const {
 } = require("@aws-sdk/client-s3");
 
 const s3 = require("./s3Client");
+const { getArticleRuntimeConfig } = require("./secretsManagerService");
 const versionService = require("./versionService");
 const { httpError } = require("./articleService");
 
@@ -30,6 +31,23 @@ async function exportVersion(pool, articleId, versionId, user) {
     throw httpError(503, "S3 bucket is not configured");
   }
 
+  // Retrieve backup settings from AWS Secrets Manager.
+  let runtimeConfig;
+
+  try {
+    runtimeConfig = await getArticleRuntimeConfig();
+  } catch {
+    throw httpError(
+      503,
+      "Article backup configuration unavailable"
+    );
+  }
+
+  // Do not export if backups are disabled.
+  if (!runtimeConfig.enabled) {
+    throw httpError(503, "Article backups are disabled");
+  }
+
   const key = objectKey(articleId, versionId);
 
   const backup = {
@@ -39,19 +57,19 @@ async function exportVersion(pool, articleId, versionId, user) {
     version: articleVersion
   };
 
-
-try {
-  await s3.send(new PutObjectCommand({
-    Bucket: bucket,
-    Key: key,
-    Body: JSON.stringify(backup),
-    ContentType: "application/json"
-  }));
-} catch (error) {
-  console.error("S3 export failed:", error.name);
-  throw httpError(503, "S3 temporarily unavailable");
-}
-
+  try {
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: JSON.stringify(backup),
+        ContentType: "application/json"
+      })
+    );
+  } catch (error) {
+    console.error("S3 export failed:", error.name);
+    throw httpError(503, "S3 temporarily unavailable");
+  }
 
   return {
     message: "Article version exported successfully",
@@ -75,10 +93,12 @@ async function retrieveVersion(pool, articleId, versionId, user) {
   }
 
   try {
-    const result = await s3.send(new GetObjectCommand({
-      Bucket: bucket,
-      Key: objectKey(articleId, versionId)
-    }));
+    const result = await s3.send(
+      new GetObjectCommand({
+        Bucket: bucket,
+        Key: objectKey(articleId, versionId)
+      })
+    );
 
     const content = await result.Body.transformToString();
 
