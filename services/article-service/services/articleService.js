@@ -1,5 +1,6 @@
 
 const pool = require("../db/pool");
+const { randomUUID } = require("node:crypto");
 
 const {
   canAccess
@@ -336,6 +337,7 @@ async function mine(user) {
 
 // ==========================================
 // 9. CHANGE ARTICLE STATUS
+// WITH TRANSACTIONAL SQS OUTBOX
 // ==========================================
 
 async function transitionStatus(id, from, to) {
@@ -355,24 +357,84 @@ async function transitionStatus(id, from, to) {
     );
   }
 
-  const result = await pool.query(
-    `UPDATE articles
-     SET
-       status = $1,
-       updated_at = NOW(),
-       published_at =
-         CASE
-           WHEN $1::varchar = 'published' THEN NOW()
-           WHEN $1::varchar = 'draft' THEN NULL
-           ELSE published_at
-         END
-     WHERE id = $2
-       AND status = $3
-     RETURNING *`,
-    [to, id, from]
-  );
+  const client = await pool.connect();
 
-  return result.rows[0] || null;
+  try {
+    await client.query("BEGIN");
+
+    // Update article only if its current status
+    // matches the expected previous status.
+    const result = await client.query(
+      `UPDATE articles
+       SET
+         status = $1,
+         updated_at = NOW(),
+         published_at =
+           CASE
+             WHEN $1::varchar = 'published' THEN NOW()
+             WHEN $1::varchar = 'draft' THEN NULL
+             ELSE published_at
+           END
+       WHERE id = $2
+         AND status = $3
+       RETURNING *`,
+      [to, id, from]
+    );
+
+    const article = result.rows[0];
+
+    if (!article) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    // Store the submission event in the same
+    // database transaction as the status update.
+    if (from === "draft" && to === "in_review") {
+      const event = {
+        eventId: randomUUID(),
+        eventType: "article.submitted",
+        articleId: article.id,
+        occurredAt: new Date().toISOString()
+      };
+
+      await client.query(
+        `INSERT INTO article_event_outbox
+         (
+           id,
+           event_type,
+           article_id,
+           payload
+         )
+         VALUES ($1, $2, $3, $4)`,
+        [
+          event.eventId,
+          event.eventType,
+          article.id,
+          JSON.stringify(event)
+        ]
+      );
+    }
+
+    await client.query("COMMIT");
+
+    return article;
+
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      console.error(
+        "Transaction rollback failed:",
+        rollbackError.message
+      );
+    }
+
+    throw error;
+
+  } finally {
+    client.release();
+  }
 }
 
 // ==========================================
