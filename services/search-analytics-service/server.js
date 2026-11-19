@@ -1,4 +1,3 @@
-
 require("dotenv").config();
 
 const crypto = require("node:crypto");
@@ -184,6 +183,13 @@ app.use((req, res) => {
 // --------------------------------------
 
 app.use((error, req, res, next) => {
+  // Upstream / dependency failures (Article Service, Turnstile, S3 config):
+  // return the safe message with 502/503 so callers know the real cause.
+  if (error.status === 502 || error.status === 503) {
+    console.error("Search & Analytics upstream error:", error.message);
+    return res.status(error.status).json({ error: error.message });
+  }
+
   if (error.type === "entity.too.large") {
     return res.status(413).json({
       error: "Request too large"
@@ -231,4 +237,3 @@ if (require.main === module) {
 }
 
 module.exports = app;
-
