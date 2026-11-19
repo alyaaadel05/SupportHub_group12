@@ -1,8 +1,8 @@
 
 "use strict";
+const BASE = "http://127.0.0.1:3005";
+const COUNT = 25;
 
-const BASE = "http://127.0.0.1:3001";
-const COUNT = 10;
 
 // Receive the first author's session cookie
 // through standard input, not source code.
