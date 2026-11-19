@@ -28,6 +28,18 @@ services:
     depends_on:
       floci:
         condition: service_started
-
+  identity-service:
+    build:
+      context: ../../services/identity-service
+    image: supporthub-identity-service:local
+    container_name: supporthub-identity
+    ports:
+      - "3006:3003"
+    env_file:
+      - ../../services/identity-service/.env
+    environment:
+      PORT: "3003"
+      NODE_ENV: production
+    restart: unless-stopped
 volumes:
   floci-data:
