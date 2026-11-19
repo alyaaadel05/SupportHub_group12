@@ -1,0 +1,19 @@
+﻿SupportHub Group 12 — Signed Article API Verification
+
+Endpoint: GET /internal/articles/7
+Client identity: editorial-service
+Authentication: HMAC-SHA256
+
+HTTP status: 200
+Article found: true
+Article ID: 7
+Article status: in_review
+
+Result: PASS
+
+Previous negative test:
+Unsigned PATCH request rejected with HTTP 401.
+
+Note:
+This was a standalone signed HTTP client test.
+Full Editorial Service integration is still pending.
