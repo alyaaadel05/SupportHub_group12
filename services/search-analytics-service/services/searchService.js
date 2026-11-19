@@ -3,6 +3,7 @@ const { HttpError, id } = require("./http");
 const { getPublishedArticle } = require("./serviceClient");
 const { words, scoreArticle, parseSearch } = require("./ranking");
 const counters = require("./countersService");
+const metrics = require("./metricsService");
 async function search(input) {
   const { q, page, pageSize, categoryId, terms } = parseSearch(input);
   // Bounded on purpose (see PAGINATION-REVIEW.md). Category names are read-only
@@ -22,6 +23,8 @@ async function search(input) {
   const logged = await pool.query(
     `INSERT INTO search_query_logs(query_text,result_count) VALUES($1,$2) RETURNING search_id`, [q,total]);
    counters.recordSearch(q, total); // DynamoDB live counter (never blocks or breaks search)
+     metrics.record("Searches", 1); // CloudWatch metric
+  if (total === 0) metrics.record("ZeroResultSearches", 1);
     return { results: result, total, page, pageSize, searchId: logged.rows[0].search_id };
 }
 async function getPublicArticle(value) {

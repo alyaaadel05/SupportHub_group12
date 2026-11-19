@@ -11,6 +11,7 @@ const rateLimit = require("express-rate-limit");
 
 const pool = require("./db/pool");
 const { requireLogin, noStore } = require("./middleware/security");
+const { requestMetrics } = require("./middleware/metrics");
 
 const searchRoutes = require("./routes/searchRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
@@ -37,6 +38,9 @@ const app = express();
 
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
+
+// CloudWatch request metrics (count, latency, errors) for every request.
+app.use(requestMetrics);
 
 // --------------------------------------
 // 1. BASIC SECURITY
