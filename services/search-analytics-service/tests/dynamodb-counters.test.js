@@ -13,8 +13,9 @@ function fakeDynamo(handler) {
 test("search counter uses TERM# key, adds 1 search and counts zero results", async () => {
   process.env.DYNAMODB_COUNTERS_TABLE = "supporthub-search-counters";
   const sent = fakeDynamo(() => ({}));
-  const result = await counters.recordSearch("  Password ", 0);
-  assert.equal(result.ok, true);
+  assert.equal(counters.recordSearch("  Password ", 0).queued, true);
+  const result = await counters.flush();
+  assert.equal(result.sent, 1);
   assert.equal(sent[0].TableName, "supporthub-search-counters");
   assert.deepEqual(sent[0].Key, { pk: "TERM#password" });
   assert.deepEqual(Object.values(sent[0].ExpressionAttributeNames), ["searches", "zeroResults"]);
@@ -25,21 +26,42 @@ test("search counter uses TERM# key, adds 1 search and counts zero results", asy
 test("search with results does not add a zero-result count", async () => {
   process.env.DYNAMODB_COUNTERS_TABLE = "supporthub-search-counters";
   const sent = fakeDynamo(() => ({}));
-  await counters.recordSearch("password", 3);
+  counters.recordSearch("password", 3);
+  await counters.flush();
   assert.equal(sent[0].ExpressionAttributeValues[":v1"], 0);
+});
+
+test("many searches for the same term become ONE DynamoDB update", async () => {
+  process.env.DYNAMODB_COUNTERS_TABLE = "supporthub-search-counters";
+  const sent = fakeDynamo(() => ({}));
+  counters.recordSearch("password", 1);
+  counters.recordSearch("PASSWORD", 0);
+  counters.recordSearch("password", 2);
+  counters.recordView(1);
+  counters.recordView(1);
+  const result = await counters.flush();
+  assert.equal(result.sent, 2);
+  const term = sent.find(i => i.Key.pk === "TERM#password");
+  const article = sent.find(i => i.Key.pk === "ARTICLE#1");
+  assert.equal(term.ExpressionAttributeValues[":v0"], 3);
+  assert.equal(term.ExpressionAttributeValues[":v1"], 1);
+  assert.equal(article.ExpressionAttributeValues[":v0"], 2);
+  assert.equal(counters.pendingCount(), 0);
 });
 
 test("empty search is not counted", async () => {
   const sent = fakeDynamo(() => ({}));
-  const result = await counters.recordSearch("   ", 0);
+  const result = counters.recordSearch("   ", 0);
   assert.equal(result.skipped, true);
+  await counters.flush();
   assert.equal(sent.length, 0);
 });
 
 test("article view counter uses ARTICLE# key", async () => {
   process.env.DYNAMODB_COUNTERS_TABLE = "supporthub-search-counters";
   const sent = fakeDynamo(() => ({}));
-  await counters.recordView(1);
+  counters.recordView(1);
+  await counters.flush();
   assert.deepEqual(sent[0].Key, { pk: "ARTICLE#1" });
   assert.deepEqual(Object.values(sent[0].ExpressionAttributeNames), ["views"]);
 });
@@ -47,15 +69,17 @@ test("article view counter uses ARTICLE# key", async () => {
 test("DynamoDB failure does not throw (search keeps working)", async () => {
   process.env.DYNAMODB_COUNTERS_TABLE = "supporthub-search-counters";
   fakeDynamo(() => { const e = new Error("down"); e.name = "ResourceNotFoundException"; throw e; });
-  const result = await counters.recordSearch("password", 1);
-  assert.equal(result.ok, false);
+  counters.recordSearch("password", 1);
+  const result = await counters.flush();
+  assert.equal(result.failed, 1);
 });
 
 test("no table configured means counters are skipped", async () => {
   delete process.env.DYNAMODB_COUNTERS_TABLE;
   const sent = fakeDynamo(() => ({}));
-  const result = await counters.recordView(1);
+  const result = counters.recordView(1);
   assert.equal(result.skipped, true);
+  await counters.flush();
   assert.equal(sent.length, 0);
 });
 
