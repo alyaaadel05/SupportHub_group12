@@ -8,6 +8,8 @@ export MSYS_NO_PATHCONV=1
 
 TABLE="${DYNAMODB_COUNTERS_TABLE:-supporthub-search-counters}"
 BUCKET="${S3_EXPORT_BUCKET:-supporthub-search-analytics-exports}"
+IAM_USER="search-analytics-service"
+POLICY_FILE="infra/iam/search-analytics-policy.json"
 
 echo "== Floci account"
 aws sts get-caller-identity --query Account --output text
@@ -38,5 +40,18 @@ aws s3api put-public-access-block --bucket "$BUCKET" --public-access-block-confi
 aws s3api put-bucket-encryption --bucket "$BUCKET" --server-side-encryption-configuration \
   '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}' \
   && echo "default encryption on" || echo "bucket encryption not supported by this emulator"
+
+echo "== IAM user (least privilege): $IAM_USER"
+if aws iam get-user --user-name "$IAM_USER" >/dev/null 2>&1; then
+  echo "exists - skipped"
+else
+  aws iam create-user --user-name "$IAM_USER" >/dev/null && echo "created"
+fi
+aws iam put-user-policy --user-name "$IAM_USER" \
+  --policy-name SearchAnalyticsLeastPrivilege \
+  --policy-document "file://$POLICY_FILE" && echo "policy SearchAnalyticsLeastPrivilege applied"
+echo "Access keys are NOT created here (they are secrets). Create them once with:"
+echo "  aws iam create-access-key --user-name $IAM_USER"
+echo "and put them only in your private .env (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)."
 
 echo "Done."
