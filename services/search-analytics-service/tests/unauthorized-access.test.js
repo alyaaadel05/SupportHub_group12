@@ -61,6 +61,16 @@ test("reviewer can open analytics", () => {
   assert.equal(passed, true);
 });
 
+test("editor can open analytics", () => {
+  const { passed } = run(requireReviewer, fakeReq({ user: { id: 10, role: "editor" } }));
+  assert.equal(passed, true);
+});
+
+test("admin can open analytics", () => {
+  const { passed } = run(requireReviewer, fakeReq({ user: { id: 11, role: "admin" } }));
+  assert.equal(passed, true);
+});
+
 test("write request from another website is rejected (403)", () => {
   process.env.FRONTEND_ORIGIN = "http://localhost:8788";
   const req = fakeReq({ csrfToken: "abc", headers: { origin: "http://evil.example", "x-csrf-token": "abc" } });
