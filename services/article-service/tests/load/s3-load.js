@@ -1,7 +1,7 @@
 
 "use strict";
 const BASE = "http://127.0.0.1:3005";
-const COUNT = 25;
+const COUNT = 100;
 
 
 // Receive the first author's session cookie
