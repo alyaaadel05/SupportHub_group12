@@ -1,9 +1,67 @@
-const router=require("express").Router();
-const c=require("../controllers/versionController");
-const {requireRole,requireCsrf,assertOrigin}=require("../middleware/security");
-const secure=[assertOrigin(process.env.FRONTEND_ORIGIN),requireCsrf];
-router.get("/articles/:id/versions",requireRole("author","reviewer"),c.list);
-router.get("/articles/:id/versions/compare",requireRole("author","reviewer"),c.compare);
-router.get("/articles/:id/versions/:versionId",requireRole("author","reviewer"),c.get);
-router.post("/articles/:id/restore",requireRole("author","reviewer"),...secure,c.restore);
-module.exports=router;
+
+const router = require("express").Router();
+
+const c = require("../controllers/versionController");
+
+const {
+  requireRole,
+  requireCsrf,
+  assertOrigin
+} = require("../middleware/security");
+
+// Security for requests that modify data
+const secure = [
+  assertOrigin(process.env.FRONTEND_ORIGIN),
+  requireCsrf
+];
+
+// Allow authors and administrators
+const authorAccess = requireRole("author", "admin");
+
+// List article versions
+router.get(
+  "/articles/:id/versions",
+  authorAccess,
+  c.list
+);
+
+// Compare two versions
+router.get(
+  "/articles/:id/versions/compare",
+  authorAccess,
+  c.compare
+);
+
+// View a specific version
+router.get(
+  "/articles/:id/versions/:versionId",
+  authorAccess,
+  c.get
+);
+
+// Restore a previous version
+router.post(
+  "/articles/:id/restore",
+  authorAccess,
+  ...secure,
+  c.restore
+);
+
+
+ // Export an article version to S3
+router.post(
+  "/articles/:id/versions/:versionId/export",
+  authorAccess,
+  ...secure,
+  c.exportBackup
+);
+
+// Retrieve an article version from S3
+router.get(
+  "/articles/:id/versions/:versionId/export",
+  authorAccess,
+  c.getBackup
+);
+
+
+module.exports = router;
