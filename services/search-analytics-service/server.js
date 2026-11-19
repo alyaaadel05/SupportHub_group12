@@ -98,7 +98,7 @@ app.use(session({
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 300,
+   limit: Number(process.env.RATE_LIMIT_MAX || 300),
   standardHeaders: "draft-7",
   legacyHeaders: false
 });

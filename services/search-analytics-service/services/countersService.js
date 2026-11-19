@@ -1,7 +1,9 @@
 // Live usage counters in DynamoDB (AWS service 1).
 // Neon stays the source of truth (every search and view is stored there);
 // DynamoDB keeps fast running totals per search term and per article.
-// A DynamoDB failure never breaks search: it is logged and skipped.
+// Increments are collected in memory and written in one UpdateItem per key
+// every few seconds (load testing showed one DynamoDB call per search was the
+// bottleneck at 100 users). A DynamoDB failure never breaks search.
 const { UpdateCommand, ScanCommand } = require("@aws-sdk/lib-dynamodb");
 const { dynamo } = require("./awsClients");
 
@@ -33,15 +35,44 @@ async function add(pk, values) {
   }
 }
 
+let pending = new Map();
+let timer = null;
+
+function queue(pk, values) {
+  if (!tableName()) return { ok: false, skipped: true };
+  const current = pending.get(pk) || {};
+  for (const [field, amount] of Object.entries(values)) current[field] = (current[field] || 0) + amount;
+  pending.set(pk, current);
+  if (!timer) {
+    timer = setInterval(flush, Number(process.env.COUNTERS_FLUSH_MS || 5000));
+    timer.unref(); // never keeps the process alive on its own
+  }
+  return { ok: true, queued: true };
+}
+
+async function flush() {
+  if (!pending.size || !tableName()) return { sent: 0, failed: 0 };
+  const batch = pending;
+  pending = new Map();
+  let sent = 0, failed = 0;
+  for (const [pk, values] of batch) {
+    const result = await add(pk, values);
+    if (result.ok) sent++; else failed++;
+  }
+  return { sent, failed };
+}
+
 function recordSearch(query, resultCount) {
   const q = String(query || "").trim();
-  if (!q) return Promise.resolve({ ok: false, skipped: true });
-  return add(termKey(q), { searches: 1, zeroResults: resultCount === 0 ? 1 : 0 });
+  if (!q) return { ok: false, skipped: true };
+  return queue(termKey(q), { searches: 1, zeroResults: resultCount === 0 ? 1 : 0 });
 }
 
 function recordView(articleId) {
-  return add(articleKey(articleId), { views: 1 });
+  return queue(articleKey(articleId), { views: 1 });
 }
+
+function pendingCount() { return pending.size; }
 
 async function liveCounters() {
   const table = tableName();
@@ -61,4 +92,4 @@ async function liveCounters() {
   }
 }
 
-module.exports = { recordSearch, recordView, liveCounters, termKey, articleKey };
+module.exports = { recordSearch, recordView, flush, pendingCount, liveCounters, termKey, articleKey };

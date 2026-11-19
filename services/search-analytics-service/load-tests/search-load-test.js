@@ -33,8 +33,11 @@ const keywords = ["password", "login", "account", "router", "email", "billing"];
 
 export default function () {
   const q = keywords[Math.floor(Math.random() * keywords.length)];
-  const res = http.get(`${BASE_URL}/api/public/articles?q=${q}&page=1`);
-
+  // ENDPOINT=health tests the health check (one tiny DB query) for comparison.
+  const url = __ENV.ENDPOINT === "health"
+    ? `${BASE_URL}/api/health`
+    : `${BASE_URL}/api/public/articles?q=${q}&page=1`;
+  const res = http.get(url);
   check(res, {
     "search returned 200": (r) => r.status === 200,
   });
