@@ -57,3 +57,18 @@ test("search with no keyword and no page defaults to page 1", () => {
   assert.equal(result.q, "");
   assert.equal(result.categoryId, null);
 });
+
+test("page size can be chosen between 1 and 50", () => {
+  assert.equal(parseSearch({ pageSize: "5" }).pageSize, 5);
+  assert.equal(parseSearch({ pageSize: "50" }).pageSize, 50);
+});
+
+test("page size defaults to 10", () => {
+  assert.equal(parseSearch({}).pageSize, 10);
+});
+
+test("invalid page sizes are rejected with 400", () => {
+  for (const bad of ["0", "51", "abc", "2.5", "-3"]) {
+    assert.throws(() => parseSearch({ pageSize: bad }), { status: 400 }, `should reject pageSize ${bad}`);
+  }
+});
