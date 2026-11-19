@@ -97,7 +97,7 @@ async function retrieveVersion(pool, articleId, versionId, user) {
     }
 
     console.error("S3 retrieval failed:", error.name);
-    throw httpError(503, "S3 temporarily unavailable");  
+    throw httpError(503, "S3 temporarily unavailable");
   }
 }
 
