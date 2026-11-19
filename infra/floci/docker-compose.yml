@@ -25,9 +25,29 @@ services:
       PORT: "3001"
       NODE_ENV: production
       AWS_ENDPOINT_URL: http://floci:4566
+      AWS_SECRET_NAME: supporthub/article/runtime-config
     depends_on:
       floci:
         condition: service_started
+    restart: unless-stopped
+
+  article-outbox-worker:
+    build:
+      context: ../../services/article-service
+    image: supporthub-article-service:local
+    container_name: supporthub-article-outbox-worker
+    command: ["node", "services/articleOutboxScheduler.js"]
+    env_file:
+      - ../../services/article-service/.env
+    environment:
+      NODE_ENV: production
+      AWS_ENDPOINT_URL: http://floci:4566
+      AWS_SECRET_NAME: supporthub/article/runtime-config
+    depends_on:
+      floci:
+        condition: service_started
+    restart: unless-stopped
+
   identity-service:
     build:
       context: ../../services/identity-service
@@ -39,7 +59,8 @@ services:
       - ../../services/identity-service/.env
     environment:
       PORT: "3003"
-      NODE_ENV: production
+      NODE_ENV: ${IDENTITY_NODE_ENV:-development}
     restart: unless-stopped
+
 volumes:
   floci-data:

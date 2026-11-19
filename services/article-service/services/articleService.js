@@ -222,7 +222,6 @@ async function update(id, input, user) {
       ]
     );
 
-    // Find the latest version number.
     const versions = await client.query(
       `SELECT COALESCE(
          MAX(version_number), 0
@@ -235,7 +234,6 @@ async function update(id, input, user) {
     const nextVersion =
       Number(versions.rows[0].n) + 1;
 
-    // Save the new version.
     await client.query(
       `INSERT INTO article_versions
         (
@@ -340,8 +338,19 @@ async function mine(user) {
 // WITH TRANSACTIONAL SQS OUTBOX
 // ==========================================
 
-async function transitionStatus(id, from, to) {
+async function transitionStatus(id, from, to, user) {
   id = validId(id);
+
+  // This function is for authenticated
+  // Article Service callers.
+  if (
+    !user ||
+    !Number.isSafeInteger(Number(user.id)) ||
+    Number(user.id) <= 0 ||
+    !["author", "admin"].includes(user.role)
+  ) {
+    throw httpError(403, "Forbidden");
+  }
 
   const allowed = {
     draft: ["in_review"],
@@ -357,13 +366,25 @@ async function transitionStatus(id, from, to) {
     );
   }
 
+  // Authors may submit their own drafts.
+  // Other transitions require a separate
+  // authorized Editorial workflow.
+  if (
+    user.role !== "admin" &&
+    (from !== "draft" || to !== "in_review")
+  ) {
+    throw httpError(
+      403,
+      "Authors can only submit drafts for review"
+    );
+  }
+
   const client = await pool.connect();
 
   try {
     await client.query("BEGIN");
 
-    // Update article only if its current status
-    // matches the expected previous status.
+    // Check status and ownership atomically.
     const result = await client.query(
       `UPDATE articles
        SET
@@ -371,14 +392,26 @@ async function transitionStatus(id, from, to) {
          updated_at = NOW(),
          published_at =
            CASE
-             WHEN $1::varchar = 'published' THEN NOW()
-             WHEN $1::varchar = 'draft' THEN NULL
+             WHEN $1::varchar = 'published'
+               THEN NOW()
+             WHEN $1::varchar = 'draft'
+               THEN NULL
              ELSE published_at
            END
        WHERE id = $2
          AND status = $3
+         AND (
+           $4::varchar = 'admin'
+           OR author_id = $5
+         )
        RETURNING *`,
-      [to, id, from]
+      [
+        to,
+        id,
+        from,
+        user.role,
+        Number(user.id)
+      ]
     );
 
     const article = result.rows[0];
@@ -388,8 +421,7 @@ async function transitionStatus(id, from, to) {
       return null;
     }
 
-    // Store the submission event in the same
-    // database transaction as the status update.
+    // Store the event in the SAME transaction.
     if (from === "draft" && to === "in_review") {
       const event = {
         eventId: randomUUID(),

@@ -64,4 +64,14 @@ router.delete(
   articleController.remove
 );
 
+
+ // Authors submit their drafts for review.
+router.post(
+  "/articles/:id/submit",
+  authorAccess,
+  ...secure,
+  articleController.submit
+);
+
+
 module.exports = router;
