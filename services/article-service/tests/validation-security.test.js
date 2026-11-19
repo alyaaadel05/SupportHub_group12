@@ -204,4 +204,3 @@ test("Allowed Origin is accepted", () => {
 
   assert.equal(nextCalled, true);
 });
-

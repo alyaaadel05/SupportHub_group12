@@ -207,4 +207,3 @@ test("Invalid category name is rejected", async () => {
 
   assert.equal(error?.status, 400);
 });
-

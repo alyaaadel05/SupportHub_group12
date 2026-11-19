@@ -125,4 +125,3 @@ test("Unauthorized user cannot access S3 backup", async (t) => {
 
   assert.equal(s3Called, false);
 });
-
