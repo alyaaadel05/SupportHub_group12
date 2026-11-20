@@ -14,7 +14,7 @@ function parseSearch(input = {}) {
   if (!Number.isSafeInteger(page) || page < 1 || page > 100) throw new HttpError(400, "Invalid page");
     const pageSize = Number(input.pageSize || 10);
   if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 50) throw new HttpError(400, "Invalid page size");
-  const categoryId = input.categoryID || input.categoryId ? id(input.categoryID || input.categoryId) : null;
-  return { q, page, pageSize, categoryId, terms: words(q) };
+  const rawCategory = input.categoryID || input.categoryId || input.category; // "category" is what frontend/js/articles.js sends
+  const categoryId = rawCategory ? id(rawCategory) : null;  return { q, page, pageSize, categoryId, terms: words(q) };
 }
 module.exports = { words, scoreArticle, parseSearch };

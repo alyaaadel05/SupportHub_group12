@@ -61,12 +61,13 @@ responses of this service.
 | 4 | Dashboard allowed only editor/admin; backend allows reviewer/editor/admin | Reviewers would be blocked by the page | `requireRole(["reviewer","editor","admin"])`. |
 | 5 | No unhelpful-vote total or poorly rated articles in the overview | Checklist analytics missing | Added `helpfulVotes`, `unhelpfulVotes`, `poorlyRatedArticles`. |
 | 6 | Knowledge gaps, sentiment, DynamoDB live counters and S3 exports were not visible | AWS features not shown in the UI | `analytics.js` adds these sections itself (`analytics.html` unchanged). |
+| 7 | Frontend sends `category=`; service only read `categoryID` / `categoryId` | Category dropdown on the articles page was ignored | Service now also accepts `category`. Live check: `category=1` → 1 article, `category=99` → 0. Tests in `tests/category-filter.test.js`. |
 
 Verification:
 - `GET http://127.0.0.1:3004/api/public/articles?q=password` returns both `results`
   and `articles`, with `id` and `content`.
 - `overview()` was run against Neon and returned the new fields.
-- `npm test`: 64/64 passing.
+- `npm test`: 67/67 passing.
 
 ## 4. Security notes for the frontend
 
