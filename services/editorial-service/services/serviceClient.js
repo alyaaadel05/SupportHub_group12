@@ -34,9 +34,21 @@ async function getArticle(articleId) {
   const result = await serviceRequest(process.env.ARTICLE_SERVICE_URL, "GET", `/internal/articles/${articleId}`);
   return result.article;
 }
-async function transitionArticle(articleId, from, to) {
-  const result = await serviceRequest(process.env.ARTICLE_SERVICE_URL, "PATCH",
-    `/internal/articles/${articleId}/status`, { from, to });
+async function transitionArticle(articleId, from, to, operationId) {
+  if (
+    typeof operationId !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(operationId)
+  ) {
+    throw new HttpError(400, "A valid workflow operation ID is required");
+  }
+
+  const result = await serviceRequest(
+    process.env.ARTICLE_SERVICE_URL,
+    "PATCH",
+    `/internal/articles/${articleId}/status`,
+    { operationId, from, to }
+  );
+
   return result.article;
 }
 async function notifySearch(articleId) {
