@@ -4,6 +4,7 @@ const { getPublishedArticle } = require("./serviceClient");
 const { words, scoreArticle, parseSearch } = require("./ranking");
 const counters = require("./countersService");
 const metrics = require("./metricsService");
+
 async function search(input) {
   const { q, page, pageSize, categoryId, terms } = parseSearch(input);
   // Bounded on purpose (see PAGINATION-REVIEW.md). Category names are read-only
@@ -18,15 +19,18 @@ async function search(input) {
     .sort((a,b) => b.relevance - a.relevance ||
       new Date(b.published_at) - new Date(a.published_at) || Number(a.article_id) - Number(b.article_id));
   const total = ranked.length;
+  // "articles", "id" and "content" match what frontend/js/articles.js expects;
+  // "results", "article_id" and "excerpt" are kept for existing clients and tests.
   const result = ranked.slice((page - 1) * pageSize, page * pageSize)
-    .map(({ content, ...a }) => ({ ...a, status: "published", excerpt: content.slice(0, 180) }));
+    .map(({ content, ...a }) => ({ ...a, id: a.article_id, status: "published", excerpt: content.slice(0, 180), content }));
   const logged = await pool.query(
     `INSERT INTO search_query_logs(query_text,result_count) VALUES($1,$2) RETURNING search_id`, [q,total]);
-   counters.recordSearch(q, total); // DynamoDB live counter (never blocks or breaks search)
-     metrics.record("Searches", 1); // CloudWatch metric
+  counters.recordSearch(q, total); // DynamoDB live counter (never blocks or breaks search)
+  metrics.record("Searches", 1); // CloudWatch metric
   if (total === 0) metrics.record("ZeroResultSearches", 1);
-    return { results: result, total, page, pageSize, searchId: logged.rows[0].search_id };
+  return { results: result, articles: result, total, page, pageSize, searchId: logged.rows[0].search_id };
 }
+
 async function getPublicArticle(value) {
   const articleId = id(value);
   const { rows } = await pool.query(`SELECT s.article_id, s.title, s.content, s.category_id,
@@ -35,9 +39,10 @@ async function getPublicArticle(value) {
     WHERE s.article_id = $1`, [articleId]);
   if (!rows[0]) throw new HttpError(404, "Published article not found");
   await pool.query(`INSERT INTO article_views(article_id) VALUES($1)`, [articleId]);
-    counters.recordView(articleId); // DynamoDB live counter
+  counters.recordView(articleId); // DynamoDB live counter
   return { ...rows[0], status: "published" };
 }
+
 async function logClick(input) {
   const articleId = id(input.articleId);
   const searchId = id(input.searchId);
@@ -48,6 +53,7 @@ async function logClick(input) {
   await pool.query(`INSERT INTO search_result_clicks(search_id,article_id) VALUES($1,$2)`, [searchId,articleId]);
   return { saved: true };
 }
+
 async function indexPublished(input) {
   const articleId = id(input.articleId ?? input.article_id);
   // Authoritative Article Service verifies published status; never trust notification content.
@@ -59,4 +65,5 @@ async function indexPublished(input) {
     [articleId,article.title,article.content,article.category_id,article.published_at || new Date()]);
   return { articleId, indexed: true };
 }
+
 module.exports = { words, scoreArticle, parseSearch, search, getPublicArticle, logClick, indexPublished };
