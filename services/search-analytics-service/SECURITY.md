@@ -41,5 +41,6 @@ Automated tests: `npm test` (64 passing). Live tests: `curl` / AWS CLI.
 
 | S19 | Bot protection on votes/feedback (Turnstile, live) | `node scripts/test-turnstile-live.js` against Cloudflare with official test keys: no token / no secret / always-pass / always-fail | 403 / 503 / accepted / 403 | 403 "Turnstile token required" / 503 "Turnstile not configured" / accepted / 403 "Turnstile verification failed" (`evidence/turnstile.txt`) | ✅ |
 
+| S20 | External API failure (availability) | `node scripts/test-sentiment-live.js`: Hugging Face returns HTTP 402 (no free credits); also run with no token | No crash; feedback still saved; sentiment `unavailable` / `not_configured` | `unavailable` for both texts, `not_configured` without token, no crash (`evidence/sentiment.txt`) | ✅ |
 
 Still to test once the shared login is available: live vote ownership (T5), live duplicate-vote protection (T5) and Turnstile token rules (T5).
