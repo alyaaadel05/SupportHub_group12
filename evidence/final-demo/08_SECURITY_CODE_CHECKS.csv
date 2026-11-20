@@ -1,0 +1,8 @@
+﻿"Check","SourceFile","Found"
+"Signed internal API","services/article-service/server.js","True"
+"Article CSRF and Origin","services/article-service/server.js","True"
+"Article idempotency","services/article-service/services/articleService.js","True"
+"Article ownership authorization","services/article-service/services/articleService.js","True"
+"Identity authentication","services/identity-service/server.js","True"
+"Identity CSRF","services/identity-service/server.js","True"
+"Outbox retry","services/article-service/services/articleOutboxWorker.js","True"

@@ -1,0 +1,7 @@
+
+Effect Action         
+------ ------         
+Allow  sqs:SendMessage
+
+
+
