@@ -1,0 +1,5 @@
+Turnstile live test — 2026-11-20T11:43:15.348Z
+1. No token sent         : 403 Turnstile token required
+2. No secret configured  : 503 Turnstile not configured
+3. Always-pass test key  : ACCEPTED
+4. Always-fail test key  : 403 Turnstile verification failed
