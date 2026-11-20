@@ -13,5 +13,5 @@ window.SUPPORT_HUB = {
     search: "http://127.0.0.1:3004/api"
   } : null,
 
-  TURNSTILE_SITE_KEY: ""
+  TURNSTILE_SITE_KEY: "0x4AAAAAAGKXHCV-7y1Q1mjv"
 };
