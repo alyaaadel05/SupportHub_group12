@@ -6,12 +6,16 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js tests/securityTest.js",
+    "worker:articles": "node workers/articleEventConsumer.js",
+    "worker:publication-events": "node workers/publicationEventPublisher.js"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
+    "@aws-sdk/client-sns": "^3.1173.0",
+    "@aws-sdk/client-sqs": "^3.1173.0",
     "connect-pg-simple": "^10.0.0",
     "cors": "^2.8.6",
     "dotenv": "^16.4.5",

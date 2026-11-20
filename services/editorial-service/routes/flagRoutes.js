@@ -1,6 +1,36 @@
+
+"use strict";
+
 const router = require("express").Router();
-const c = require("../controllers/flagController");
-const { requireAuthor, requireReviewer, requireBrowserWrite } = require("../middleware/security");
-router.post("/articles/:id/flags", requireAuthor, requireBrowserWrite, c.create);
-router.patch("/flags/:id", requireReviewer, requireBrowserWrite, c.resolve);
+const controller = require("../controllers/flagController");
+
+const {
+  requireReviewer,
+  requireAuthor,
+  requireBrowserWrite
+} = require("../middleware/security");
+
+// Editors and administrators can view open flags.
+router.get(
+  "/editorial/flags",
+  requireReviewer,
+  controller.listOpen
+);
+
+// Editors and administrators can flag published articles.
+router.post(
+  "/articles/:id/flags",
+  requireReviewer,
+  requireBrowserWrite,
+  controller.create
+);
+
+// Editors and administrators can resolve flags.
+router.patch(
+  "/flags/:id",
+  requireReviewer,
+  requireBrowserWrite,
+  controller.resolve
+);
+
 module.exports = router;

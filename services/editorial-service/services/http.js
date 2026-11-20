@@ -12,4 +12,17 @@ function text(value, max, label, required = true) {
   if ((required && !s) || s.length > max) throw new HttpError(400, `${label} must be 1-${max} characters`);
   return s;
 }
-module.exports = { HttpError, id, text };
+function reviewComments(decision, value) {
+  if (!["approved", "rejected"].includes(decision)) {
+    throw new HttpError(400, "Invalid review decision");
+  }
+
+  return text(
+    value ?? "",
+    2000,
+    decision === "rejected" ? "Rejection explanation" : "Comments",
+    decision === "rejected"
+  );
+}
+
+module.exports = { HttpError, id, text, reviewComments };
