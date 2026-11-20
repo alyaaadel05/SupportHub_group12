@@ -1,0 +1,7 @@
+Vercel online checks — 2026-11-20T22:37:35Z
+Base: https://supporthub-search-analytics.vercel.app
+200  GET /api/health  ->  {"status":"ok","service":"search-analytics-service","database":"connected"}
+200  GET /api/public/articles?q=password  ->  {"results":[{"article_id":"1","title":"How to Reset Your Password","category_id":"1","category_name":"Account Support","
+200  GET /api/public/articles?category=99  ->  {"results":[],"articles":[],"total":0,"page":1,"pageSize":10,"searchId":"16791"}
+401  GET /api/analytics/overview  ->  {"error":"Login required"}
+401  GET /api/analytics/exports  ->  {"error":"Login required"}
