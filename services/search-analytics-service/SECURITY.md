@@ -39,4 +39,7 @@ Automated tests: `npm test` (64 passing). Live tests: `curl` / AWS CLI.
 | S17 | IAM least privilege (T10) | Service user deletes a table / an export / lists all buckets | AccessDenied | AccessDenied for all three | ✅ |
 | S18 | Upstream failure (availability) | Signed publication while Article Service is down | 502, no crash | 502 "Article API unavailable" | ✅ |
 
+| S19 | Bot protection on votes/feedback (Turnstile, live) | `node scripts/test-turnstile-live.js` against Cloudflare with official test keys: no token / no secret / always-pass / always-fail | 403 / 503 / accepted / 403 | 403 "Turnstile token required" / 503 "Turnstile not configured" / accepted / 403 "Turnstile verification failed" (`evidence/turnstile.txt`) | ✅ |
+
+
 Still to test once the shared login is available: live vote ownership (T5), live duplicate-vote protection (T5) and Turnstile token rules (T5).
