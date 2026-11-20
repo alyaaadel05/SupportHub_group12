@@ -1,0 +1,79 @@
+
+> supporthub-search-analytics-service@1.0.0 test
+> node --test tests/*.test.js
+
+✔ private responses are marked as not cacheable (1.426ms)
+CloudWatch metrics publish failed: ServiceUnavailable
+✔ metrics are skipped when no namespace is configured (1.851ms)
+✔ recorded metrics are sent together in one PutMetricData call (2.8344ms)
+✔ CloudWatch failure is reported but does not throw (1.1361ms)
+✔ request middleware records count, latency and client errors (1.3006ms)
+✔ server errors and rate limits are recorded separately (0.5488ms)
+DynamoDB counter update failed: ResourceNotFoundException
+DynamoDB counter read failed: Error
+✔ search counter uses TERM# key, adds 1 search and counts zero results (5.0862ms)
+✔ search with results does not add a zero-result count (0.4517ms)
+✔ many searches for the same term become ONE DynamoDB update (0.6323ms)
+✔ empty search is not counted (0.2283ms)
+✔ article view counter uses ARTICLE# key (0.4172ms)
+✔ DynamoDB failure does not throw (search keeps working) (1.1623ms)
+✔ no table configured means counters are skipped (0.3122ms)
+✔ live counters are read, split by type and sorted (0.7825ms)
+✔ live counters report unavailable when DynamoDB fails (0.5205ms)
+✔ valid article ID is accepted (2.7833ms)
+✔ invalid article IDs are rejected with 400 (0.9056ms)
+✔ feedback text is trimmed (0.1796ms)
+✔ empty feedback is rejected with 400 (0.1809ms)
+✔ feedback over 1000 characters is rejected with 400 (0.1637ms)
+✔ non-text feedback is rejected with 400 (0.1651ms)
+✔ valid search input is accepted (0.9781ms)
+✔ search longer than 100 characters is rejected with 400 (0.1865ms)
+✔ invalid page numbers are rejected with 400 (0.2393ms)
+✔ invalid category ID is rejected with 400 (0.3137ms)
+✔ search with no keyword and no page defaults to page 1 (0.1775ms)
+✔ page size can be chosen between 1 and 50 (0.1459ms)
+✔ page size defaults to 10 (0.0923ms)
+✔ invalid page sizes are rejected with 400 (0.1493ms)
+✔ keywords are lowercased (3.2624ms)
+✔ punctuation is removed from keywords (0.2463ms)
+✔ empty search gives no keywords (1.204ms)
+✔ at most 12 keywords are used (0.3899ms)
+✔ title match scores higher than category match, which scores higher than content match (0.45ms)
+✔ article without the keyword scores zero (0.2386ms)
+✔ more matching keywords give a higher score (0.2029ms)
+✔ category name match adds to the score (0.1718ms)
+✔ tokenization removes duplicates (2.9147ms)
+✔ title matches rank above content matches (0.427ms)
+✔ invalid page throws 400 (0.9335ms)
+✔ CSV contains real summary values, terms and articles (1.2937ms)
+✔ CSV cells neutralise spreadsheet formulas (CSV injection) (0.2674ms)
+✔ export file names follow a strict pattern (1.3993ms)
+✔ export uploads an encrypted CSV to the configured private bucket (0.6942ms)
+✔ download rejects unsafe export names (path traversal) (1.0584ms)
+✔ download of a missing export returns 404 (0.3857ms)
+✔ export fails safely with 503 when no bucket is configured (0.3295ms)
+✔ signature depends on sender, path and body (2.5447ms)
+✔ valid signed editorial request (0.8208ms)
+✔ vote/feedback without login is rejected with 401 (1.3079ms)
+✔ logged-in user passes the login check (0.208ms)
+✔ analytics without login is rejected with 401 (0.1536ms)
+✔ reader cannot open analytics (403) (0.1359ms)
+✔ author cannot open analytics (403) (0.1836ms)
+✔ reviewer can open analytics (0.1226ms)
+✔ editor can open analytics (0.1117ms)
+✔ admin can open analytics (0.1301ms)
+✔ write request from another website is rejected (403) (0.3816ms)
+✔ write request without CSRF token is rejected (403) (1.2432ms)
+✔ write request with wrong CSRF token is rejected (403) (0.3559ms)
+✔ write request with correct origin and CSRF token passes (0.1988ms)
+✔ internal request from an unknown service is rejected (401) (2.0488ms)
+✔ internal request with a forged signature is rejected (401) (0.5206ms)
+✔ old (replayed) internal request is rejected (401) (0.3463ms)
+ℹ tests 64
+ℹ suites 0
+ℹ pass 64
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2387.0442

@@ -1,0 +1,14 @@
+== CloudWatch metrics (SupportHub/Search)
+------------------------
+|      ListMetrics     |
++----------------------+
+|  Searches            |
+|  ZeroResultSearches  |
+|  RateLimited         |
+|  ServerErrors        |
+|  IamCheck            |
+|  ClientErrors        |
+|  LatencyMs           |
+|  SetupCheck          |
+|  Requests            |
++----------------------+
