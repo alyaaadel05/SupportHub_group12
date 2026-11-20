@@ -5,7 +5,7 @@ const pool = require("../db/pool");
 const MIN_VOTES = Math.max(1, Number(process.env.POORLY_RATED_MIN_VOTES) || 3);
 
 async function overview() {
-  const [searches, views, votes, clicks, popular, gaps, articles, sentiments, poorlyRated] = await Promise.all([
+  const [searches, views, votes, clicks, popular, gaps, articles, sentiments, poorlyRated, daily, trending] = await Promise.all([
     pool.query(`SELECT COUNT(*)::int AS total,
       COUNT(*) FILTER (WHERE result_count > 0)::int AS successful,
       COUNT(*) FILTER (WHERE result_count=0)::int AS zero FROM search_query_logs`),
@@ -36,7 +36,20 @@ async function overview() {
        GROUP BY a.article_id,a.title
        HAVING COUNT(*) >= $1
           AND COUNT(*) FILTER (WHERE NOT h.helpful) > COUNT(*) FILTER (WHERE h.helpful)
-       ORDER BY helpfulness_rate ASC, unhelpful_votes DESC LIMIT 10`, [MIN_VOTES])
+       ORDER BY helpfulness_rate ASC, unhelpful_votes DESC LIMIT 10`, [MIN_VOTES]),
+    // Activity trend: searches, views and votes for each of the last 7 days (UTC).
+    // generate_series makes sure days with no activity still appear with 0.
+    pool.query(`SELECT to_char(d,'YYYY-MM-DD') AS day,
+       (SELECT COUNT(*)::int FROM search_query_logs WHERE searched_at >= d AND searched_at < d + INTERVAL '1 day') AS searches,
+       (SELECT COUNT(*)::int FROM article_views WHERE viewed_at >= d AND viewed_at < d + INTERVAL '1 day') AS views,
+       (SELECT COUNT(*)::int FROM helpfulness_votes WHERE created_at >= d AND created_at < d + INTERVAL '1 day') AS votes
+       FROM generate_series(date_trunc('day', NOW()) - INTERVAL '6 days', date_trunc('day', NOW()), INTERVAL '1 day') AS d
+       ORDER BY d`),
+    // Trending = most viewed in the last 7 days (all-time "most viewed" can hide what is popular now).
+    pool.query(`SELECT a.article_id,a.title,COUNT(*)::int AS views_last_7_days
+       FROM article_views v JOIN search_published_articles a ON a.article_id=v.article_id
+       WHERE v.viewed_at >= NOW() - INTERVAL '7 days'
+       GROUP BY a.article_id,a.title ORDER BY views_last_7_days DESC LIMIT 5`)
   ]);
   const s=searches.rows[0],v=votes.rows[0];
   const percent=(n,d)=> d ? Math.round(10000*n/d)/100 : 0;
@@ -50,7 +63,8 @@ async function overview() {
     helpfulnessRate:percent(v.helpful,v.total),
     popularSearchTerms:popular.rows, knowledgeGaps:gaps.rows,
     mostViewedArticles:articles.rows, sentimentBreakdown:sentiments.rows,
-    poorlyRatedArticles:poorlyRated.rows, poorlyRatedMinVotes:MIN_VOTES
+    poorlyRatedArticles:poorlyRated.rows, poorlyRatedMinVotes:MIN_VOTES,
+    dailyActivity:daily.rows, trendingArticles:trending.rows
   };
 }
 
