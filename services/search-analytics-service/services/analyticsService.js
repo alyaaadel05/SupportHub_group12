@@ -1,5 +1,9 @@
 const pool = require("../db/pool");
 
+// An article needs at least this many votes before it can be called "poorly rated",
+// so one or two unhappy readers cannot flag an article on their own.
+const MIN_VOTES = Math.max(1, Number(process.env.POORLY_RATED_MIN_VOTES) || 3);
+
 async function overview() {
   const [searches, views, votes, clicks, popular, gaps, articles, sentiments, poorlyRated] = await Promise.all([
     pool.query(`SELECT COUNT(*)::int AS total,
@@ -23,15 +27,16 @@ async function overview() {
     pool.query(`SELECT sentiment_label AS label,COUNT(*)::int AS count FROM article_feedback
        WHERE sentiment_status='completed' AND sentiment_label IS NOT NULL
        GROUP BY sentiment_label ORDER BY count DESC LIMIT 10`),
-    // Poorly rated = more unhelpful than helpful votes. Worst helpfulness first.
+    // Poorly rated = at least MIN_VOTES votes AND more unhelpful than helpful. Worst first.
     pool.query(`SELECT a.article_id,a.title,COUNT(*)::int AS total_votes,
        COUNT(*) FILTER (WHERE h.helpful)::int AS helpful_votes,
        COUNT(*) FILTER (WHERE NOT h.helpful)::int AS unhelpful_votes,
        ROUND(100.0*COUNT(*) FILTER (WHERE h.helpful)/COUNT(*),2)::float AS helpfulness_rate
        FROM helpfulness_votes h JOIN search_published_articles a ON a.article_id=h.article_id
        GROUP BY a.article_id,a.title
-       HAVING COUNT(*) FILTER (WHERE NOT h.helpful) > COUNT(*) FILTER (WHERE h.helpful)
-       ORDER BY helpfulness_rate ASC, unhelpful_votes DESC LIMIT 10`)
+       HAVING COUNT(*) >= $1
+          AND COUNT(*) FILTER (WHERE NOT h.helpful) > COUNT(*) FILTER (WHERE h.helpful)
+       ORDER BY helpfulness_rate ASC, unhelpful_votes DESC LIMIT 10`, [MIN_VOTES])
   ]);
   const s=searches.rows[0],v=votes.rows[0];
   const percent=(n,d)=> d ? Math.round(10000*n/d)/100 : 0;
@@ -45,8 +50,8 @@ async function overview() {
     helpfulnessRate:percent(v.helpful,v.total),
     popularSearchTerms:popular.rows, knowledgeGaps:gaps.rows,
     mostViewedArticles:articles.rows, sentimentBreakdown:sentiments.rows,
-    poorlyRatedArticles:poorlyRated.rows
+    poorlyRatedArticles:poorlyRated.rows, poorlyRatedMinVotes:MIN_VOTES
   };
 }
 
-module.exports = { overview };
+module.exports = { overview, MIN_VOTES };
