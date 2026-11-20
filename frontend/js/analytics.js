@@ -37,6 +37,33 @@ function describe(item) {
     .join(", ");
 }
 
+// Small table: one row per day (searches, views, votes).
+function showDailyActivity(parent, days) {
+  parent.replaceChildren();
+  if (!days || !days.length) {
+    addLine(parent, "No activity recorded yet.");
+    return;
+  }
+  const table = document.createElement("table");
+  const header = document.createElement("tr");
+  ["Day", "Searches", "Views", "Votes"].forEach(text => {
+    const cell = document.createElement("th");
+    cell.textContent = text;
+    header.appendChild(cell);
+  });
+  table.appendChild(header);
+  days.forEach(day => {
+    const row = document.createElement("tr");
+    [day.day, day.searches, day.views, day.votes].forEach(value => {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      row.appendChild(cell);
+    });
+    table.appendChild(row);
+  });
+  parent.appendChild(table);
+}
+
 async function loadLiveCounters(body) {
   body.replaceChildren();
   try {
@@ -146,6 +173,18 @@ async function initializeAnalytics() {
     }
 
     // Extra sections created by this script (analytics.html is not changed).
+    showDailyActivity(
+      addSection(container, "Activity — Last 7 Days"),
+      result.dailyActivity
+    );
+
+    showList(
+      addSection(container, "Trending This Week (most viewed in 7 days)"),
+      result.trendingArticles,
+      item => item.title + " — " + item.views_last_7_days + " views",
+      "No article views in the last 7 days."
+    );
+
     showList(
       addSection(container, "Knowledge Gaps (searches with no results)"),
       result.knowledgeGaps,
@@ -154,7 +193,7 @@ async function initializeAnalytics() {
     );
 
     showList(
-      addSection(container, "Poorly Rated Articles"),
+      addSection(container, "Poorly Rated Articles (at least " + result.poorlyRatedMinVotes + " votes)"),
       result.poorlyRatedArticles,
       item => item.title + " — " + item.helpfulness_rate + "% helpful (" +
         item.unhelpful_votes + " unhelpful of " + item.total_votes + " votes)",
