@@ -1,0 +1,10 @@
+Analytics accuracy check — 2026-11-21T13:55:57.603Z
+1. Open article 1 -> HTTP 200; views 7 -> 8 (PASS +1)
+2. totalSearches        dashboard=23023  database=23023  PASS
+2. zeroResultSearches   dashboard=7623  database=7623  PASS
+2. totalArticleViews    dashboard=8  database=8  PASS
+2. totalVotes           dashboard=1  database=1  PASS
+2. helpfulVotes         dashboard=0  database=0  PASS
+2. unhelpfulVotes       dashboard=1  database=1  PASS
+3. searchSuccessRate    dashboard=66.89%  recalculated=66.89%  PASS
+Result: 6/6 counts match
