@@ -1,5 +1,6 @@
 
 const pool = require("../db/pool");
+const { randomUUID } = require("node:crypto");
 
 const {
   canAccess
@@ -221,7 +222,6 @@ async function update(id, input, user) {
       ]
     );
 
-    // Find the latest version number.
     const versions = await client.query(
       `SELECT COALESCE(
          MAX(version_number), 0
@@ -234,7 +234,6 @@ async function update(id, input, user) {
     const nextVersion =
       Number(versions.rows[0].n) + 1;
 
-    // Save the new version.
     await client.query(
       `INSERT INTO article_versions
         (
@@ -336,10 +335,22 @@ async function mine(user) {
 
 // ==========================================
 // 9. CHANGE ARTICLE STATUS
+// WITH TRANSACTIONAL SQS OUTBOX
 // ==========================================
 
-async function transitionStatus(id, from, to) {
+async function transitionStatus(id, from, to, user) {
   id = validId(id);
+
+  // This function is for authenticated
+  // Article Service callers.
+  if (
+    !user ||
+    !Number.isSafeInteger(Number(user.id)) ||
+    Number(user.id) <= 0 ||
+    !["author", "admin"].includes(user.role)
+  ) {
+    throw httpError(403, "Forbidden");
+  }
 
   const allowed = {
     draft: ["in_review"],
@@ -355,24 +366,242 @@ async function transitionStatus(id, from, to) {
     );
   }
 
-  const result = await pool.query(
-    `UPDATE articles
-     SET
-       status = $1,
-       updated_at = NOW(),
-       published_at =
-         CASE
-           WHEN $1::varchar = 'published' THEN NOW()
-           WHEN $1::varchar = 'draft' THEN NULL
-           ELSE published_at
-         END
-     WHERE id = $2
-       AND status = $3
-     RETURNING *`,
-    [to, id, from]
-  );
+  // Authors may submit their own drafts.
+  // Other transitions require a separate
+  // authorized Editorial workflow.
+  if (
+    user.role !== "admin" &&
+    (from !== "draft" || to !== "in_review")
+  ) {
+    throw httpError(
+      403,
+      "Authors can only submit drafts for review"
+    );
+  }
 
-  return result.rows[0] || null;
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    // Check status and ownership atomically.
+    const result = await client.query(
+      `UPDATE articles
+       SET
+         status = $1,
+         updated_at = NOW(),
+         published_at =
+           CASE
+             WHEN $1::varchar = 'published'
+               THEN NOW()
+             WHEN $1::varchar = 'draft'
+               THEN NULL
+             ELSE published_at
+           END
+       WHERE id = $2
+         AND status = $3
+         AND (
+           $4::varchar = 'admin'
+           OR author_id = $5
+         )
+       RETURNING *`,
+      [
+        to,
+        id,
+        from,
+        user.role,
+        Number(user.id)
+      ]
+    );
+
+    const article = result.rows[0];
+
+    if (!article) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    // Store the event in the SAME transaction.
+    if (from === "draft" && to === "in_review") {
+      const event = {
+        eventId: randomUUID(),
+        eventType: "article.submitted",
+        articleId: article.id,
+        occurredAt: new Date().toISOString()
+      };
+
+      await client.query(
+        `INSERT INTO article_event_outbox
+         (
+           id,
+           event_type,
+           article_id,
+           payload
+         )
+         VALUES ($1, $2, $3, $4)`,
+        [
+          event.eventId,
+          event.eventType,
+          article.id,
+          JSON.stringify(event)
+        ]
+      );
+    }
+
+    await client.query("COMMIT");
+
+    return article;
+
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      console.error(
+        "Transaction rollback failed:",
+        rollbackError.message
+      );
+    }
+
+    throw error;
+
+  } finally {
+    client.release();
+  }
+}
+
+
+async function transitionEditorialStatus(
+  id,
+  from,
+  to,
+  operationId
+) {
+  id = validId(id);
+
+  if (
+    typeof operationId !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(operationId)
+  ) {
+    throw httpError(400, "Valid operationId UUID required");
+  }
+
+  operationId = operationId.toLowerCase();
+
+  const allowed = {
+    draft: ["in_review"],
+    in_review: ["draft", "approved"],
+    approved: ["published", "draft"],
+    published: ["draft"]
+  };
+
+  if (!allowed[from]?.includes(to)) {
+    throw httpError(400, "Disallowed status transition");
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    // Serialize requests using the same operation ID.
+    await client.query(
+      `SELECT pg_advisory_xact_lock(
+         hashtextextended($1::text, 0)
+       )`,
+      [operationId]
+    );
+
+    const previous = await client.query(
+      `SELECT article_id, from_status, to_status, response
+       FROM article_transition_operations
+       WHERE operation_id = $1`,
+      [operationId]
+    );
+
+    if (previous.rows.length > 0) {
+      const saved = previous.rows[0];
+
+      if (
+        Number(saved.article_id) !== Number(id) ||
+        saved.from_status !== from ||
+        saved.to_status !== to
+      ) {
+        throw httpError(
+          409,
+          "operationId already used for a different transition"
+        );
+      }
+
+      await client.query("COMMIT");
+      return saved.response;
+    }
+
+    // Only update when the current status matches from.
+    const updated = await client.query(
+      `UPDATE articles
+       SET status = $1,
+           updated_at = NOW(),
+           published_at = CASE
+             WHEN $1::varchar = 'published' THEN NOW()
+             WHEN $1::varchar = 'draft' THEN NULL
+             ELSE published_at
+           END
+       WHERE id = $2 AND status = $3
+       RETURNING *`,
+      [to, id, from]
+    );
+
+    const article = updated.rows[0];
+
+    if (!article) {
+      throw httpError(409, "Invalid article status transition");
+    }
+
+    // Preserve SQS delivery for draft submissions.
+    if (from === "draft" && to === "in_review") {
+      const event = {
+        eventId: randomUUID(),
+        eventType: "article.submitted",
+        articleId: article.id,
+        occurredAt: new Date().toISOString()
+      };
+
+      await client.query(
+        `INSERT INTO article_event_outbox
+         (id, event_type, article_id, payload)
+         VALUES ($1, $2, $3, $4)`,
+        [
+          event.eventId,
+          event.eventType,
+          article.id,
+          JSON.stringify(event)
+        ]
+      );
+    }
+
+    const response = { article };
+
+    // Save the original response in the same transaction.
+    await client.query(
+      `INSERT INTO article_transition_operations
+       (operation_id, article_id, from_status, to_status, response)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [operationId, id, from, to, JSON.stringify(response)]
+    );
+
+    await client.query("COMMIT");
+    return response;
+
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (_) {}
+
+    throw error;
+
+  } finally {
+    client.release();
+  }
 }
 
 // ==========================================
@@ -388,5 +617,6 @@ module.exports = {
   update,
   remove,
   mine,
-  transitionStatus
+  transitionStatus,
+  transitionEditorialStatus
 };

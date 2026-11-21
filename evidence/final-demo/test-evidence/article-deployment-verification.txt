@@ -1,0 +1,22 @@
+﻿SupportHub Group 12 — Article Service Deployment Verification
+
+Migration 002: Applied to shared Neon
+Table: article_transition_operations verified
+
+Updated Docker container: supporthub-article
+transitionEditorialStatus: Present in running image
+
+Article health endpoint:
+{"status":"ok","service":"article-service"}
+
+Internal endpoint security:
+PATCH /internal/articles/10/status without HMAC
+HTTP 401 Unauthorized
+{"error":"Invalid service credentials"}
+
+Article tests: 46/46 passed
+Isolated PostgreSQL idempotency test: Passed
+
+Pending:
+Signed Editorial-to-Article HTTP integration
+End-to-end retries and failure recovery

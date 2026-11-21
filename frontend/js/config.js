@@ -7,11 +7,11 @@ window.SUPPORT_HUB = {
   API_URL: "/api",
 
   API_ORIGINS: local ? {
-    identity: "http://127.0.0.1:3003/api",
-    article: "http://127.0.0.1:3001/api",
+    identity: "http://127.0.0.1:3006/api",
+    article: "http://127.0.0.1:3005/api",
     editorial: "http://127.0.0.1:3002/api",
     search: "http://127.0.0.1:3004/api"
   } : null,
 
-  TURNSTILE_SITE_KEY: ""
+  TURNSTILE_SITE_KEY: "0x4AAAAAAGKXHCV-7y1Q1mjv"
 };
