@@ -1,0 +1,11 @@
+
+=== Phase: published — article 1, keyword "password" — 2026-11-21T22:52:31Z ===
+Keyword search ?q=password        -> FOUND
+Category search ?category=1   -> FOUND
+Search index row               -> [{"article_id":"1","title":"How to Reset Your Password","updated_at":"2026-11-21T21:15:04.633Z"}]
+Open article                   -> HTTP 200
+Views before / after open      -> [{"n":9}] / [{"n":10}]
+Vote helpful                   -> {"articleId":1,"helpful":true,"saved":true}  (HTTP 200)
+Change vote to unhelpful       -> {"articleId":1,"helpful":false,"saved":true}  (HTTP 200)
+Vote rows for this article     -> [{"user_id":"10","helpful":false}]
+Analytics (most viewed + votes)-> {"article_id":"1","title":"How to Reset Your Password","views":10,"helpful_votes":0,"unhelpful_votes":1} | totalVotes 1
