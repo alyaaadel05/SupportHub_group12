@@ -723,105 +723,127 @@ async function initializeEditor() {
 // 8. EDITORIAL REVIEW QUEUE
 // ==========================================
 
-async function loadReviewQueue() {
-  const container = document.getElementById(
-    "review-list"
+async function submitEditorialDecision(articleId, decision, comments) {
+  const tokenResponse = await fetch("/api/csrf-token", {
+    credentials: "include",
+    cache: "no-store"
+  });
+
+  if (!tokenResponse.ok) {
+    throw new Error("Could not obtain Editorial CSRF token.");
+  }
+
+  const tokenData = await tokenResponse.json();
+
+  if (!/^[a-f0-9]{64}$/i.test(tokenData.csrfToken || "")) {
+    throw new Error("Invalid Editorial CSRF token.");
+  }
+
+  const response = await fetch(
+    "/api/articles/" + encodeURIComponent(articleId) + "/reviews",
+    {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": tokenData.csrfToken
+      },
+      body: JSON.stringify({ decision, comments })
+    }
   );
 
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(
+      result.error ||
+      result.message ||
+      "Editorial request failed (HTTP " + response.status + ")."
+    );
+  }
+
+  return result;
+}
+
+async function loadReviewQueue() {
+  const container = document.getElementById("review-list");
   if (!container) return;
 
   container.replaceChildren();
 
-  const result = await api("/editorial/queue");
-  const articles = result.articles || [];
+  const result = await api("/reviews?status=pending");
+  const reviews = Array.isArray(result.reviews) ? result.reviews : [];
 
-  if (!articles.length) {
-    container.appendChild(
-      el("p", "No articles waiting for review.")
-    );
+  if (!reviews.length) {
+    container.appendChild(el("p", "No articles waiting for review."));
     return;
   }
 
-  for (const article of articles) {
+  for (const review of reviews) {
+    const article = review.article || {};
+    const articleId = review.article_id ?? article.id;
+    const reviewId = review.review_id ?? review.id;
+
+    if (articleId == null) continue;
+
     const card = el("article", "", "article-card");
 
-    card.appendChild(el("h3", article.title));
     card.appendChild(
-      el("p", "Author: " + article.author_name)
-    );
-    card.appendChild(
-      el("p", "Category: " + article.category_name)
-    );
-    card.appendChild(el("p", article.content));
-
-    // APPROVE
-    card.appendChild(
-      actionButton("Approve", async () => {
-        try {
-          await api(
-            "/editorial/" +
-            encodeURIComponent(article.id) +
-            "/approve",
-            {
-              method: "POST"
-            }
-          );
-
-          showMessage(
-            "review-message",
-            "Article approved."
-          );
-
-          await loadReviewQueue();
-          await loadPublishedArticles();
-
-        } catch (error) {
-          showMessage(
-            "review-message",
-            error.message
-          );
-        }
-      })
+      el("h3", article.title || "Article #" + articleId)
     );
 
-    // REJECT
     card.appendChild(
-      actionButton("Reject", async () => {
-        const comment = window.prompt(
-          "Reason for rejection:"
-        );
-
-        if (!comment || !comment.trim()) return;
-
-        try {
-          await api(
-            "/editorial/" +
-            encodeURIComponent(article.id) +
-            "/reject",
-            {
-              method: "POST",
-              body: {
-                comment: comment.trim()
-              }
-            }
-          );
-
-          showMessage(
-            "review-message",
-            "Article rejected."
-          );
-
-          await loadReviewQueue();
-
-        } catch (error) {
-          showMessage(
-            "review-message",
-            error.message
-          );
-        }
-      }, "danger")
+      el("p", "Article ID: " + articleId + " | Review ID: " + reviewId)
     );
 
+    card.appendChild(
+      el("p", "Author ID: " + (article.author_id ?? review.submitted_by ?? "N/A"))
+    );
+
+    if (article.content) {
+      card.appendChild(el("p", article.content));
+    }
+
+    let busy = false;
+
+    async function decide(decision, comments) {
+      if (busy) return;
+
+      busy = true;
+      approveButton.disabled = true;
+      rejectButton.disabled = true;
+
+      try {
+        await submitEditorialDecision(articleId, decision, comments);
+
+        showMessage("review-message", "Review " + decision + ".");
+
+        await loadReviewQueue();
+        await loadPublishedArticles();
+      } catch (error) {
+        showMessage("review-message", error.message);
+      } finally {
+        busy = false;
+        approveButton.disabled = false;
+        rejectButton.disabled = false;
+      }
+    }
+
+    const approveButton = actionButton("Approve", async () => {
+      if (!window.confirm("Approve Article " + articleId + "?")) return;
+
+      await decide("approved", "Approved after editorial review.");
+    });
+
+    const rejectButton = actionButton("Reject", async () => {
+      const comment = window.prompt("Reason for rejection:");
+
+      if (!comment || !comment.trim()) return;
+
+      await decide("rejected", comment.trim());
+    }, "danger");
+
+    card.append(approveButton, rejectButton);
     container.appendChild(card);
   }
 }
