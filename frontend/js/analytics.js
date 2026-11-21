@@ -3,6 +3,13 @@
 // exports (S3). Only reviewer, editor (temporary) and admin; the backend enforces this too.
 // All text is set with textContent (never innerHTML) so search terms cannot inject HTML.
 
+// Only run on the analytics page itself ("/analytics" on Cloudflare, "/analytics.html" locally).
+// Other pages (e.g. articles.html) may load this script; there it must do nothing,
+// so authors and readers are never redirected away from pages they are allowed to use.
+function isAnalyticsPage() {
+  return /\/analytics(\.html)?\/?$/.test(window.location.pathname);
+}
+
 function addSection(container, title) {
   const section = document.createElement("section");
   section.className = "card";
@@ -106,6 +113,8 @@ async function loadExports(listBox) {
 }
 
 async function initializeAnalytics() {
+  if (!isAnalyticsPage()) return;
+
   const summary = document.getElementById("analytics-summary");
 
   if (!summary) return;
@@ -145,31 +154,35 @@ async function initializeAnalytics() {
 
     const table = document.getElementById("article-performance");
 
-    result.mostViewedArticles.forEach(article => {
-      const row = document.createElement("tr");
+    if (table) {
+      result.mostViewedArticles.forEach(article => {
+        const row = document.createElement("tr");
 
-      [
-        article.title,
-        article.views,
-        article.helpful_votes,
-        article.unhelpful_votes
-      ].forEach(value => {
-        const cell = document.createElement("td");
-        cell.textContent = value;
-        row.appendChild(cell);
+        [
+          article.title,
+          article.views,
+          article.helpful_votes,
+          article.unhelpful_votes
+        ].forEach(value => {
+          const cell = document.createElement("td");
+          cell.textContent = value;
+          row.appendChild(cell);
+        });
+
+        table.appendChild(row);
       });
-
-      table.appendChild(row);
-    });
+    }
 
     const searches = document.getElementById("popular-searches");
 
-    result.popularSearchTerms.forEach(item => {
-      addLine(searches, item.term + " — " + item.count + " searches");
-    });
+    if (searches) {
+      result.popularSearchTerms.forEach(item => {
+        addLine(searches, item.term + " — " + item.count + " searches");
+      });
 
-    if (!result.popularSearchTerms.length) {
-      searches.textContent = "No search activity recorded yet.";
+      if (!result.popularSearchTerms.length) {
+        searches.textContent = "No search activity recorded yet.";
+      }
     }
 
     // Extra sections created by this script (analytics.html is not changed).
