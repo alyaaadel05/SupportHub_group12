@@ -1,0 +1,7 @@
+Signed Editorial -> Search test, Article 1 (Neon development)
+BEFORE — 2026-11-21T21:13:57Z
+  search_published_articles row: [{"article_id":"1","title":"How to Reset Your Password","updated_at":"2026-11-19T13:01:00.668Z"}]
+AFTER — 2026-11-21T21:17:09Z
+  Editorial response (Salma, signed POST /internal/publications {"articleId":1}): HTTP 200 {"articleId":1,"indexed":true}
+  search_published_articles row: [{"article_id":"1","title":"How to Reset Your Password","updated_at":"2026-11-21T21:15:04.633Z"}]
+  search ?q=password -> {"results":[{"article_id":"1","title":"How to Reset Your Password","category_id":"1","category_name":"Account Support","published_at":"2026-11-11T20:2
