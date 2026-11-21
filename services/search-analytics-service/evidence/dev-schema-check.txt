@@ -1,0 +1,31 @@
+Schema check — 2026-11-21T19:58:04.425Z — endpoint: ep-falling-dream-b9en4011-pooler
+
+✓ search_published_articles
+  columns: article_id(bigint,not null), title(character varying,not null), content(text,not null), category_id(bigint,not null), published_at(timestamp with time zone,not null), updated_at(timestamp with time zone,not null)
+  indexes: search_articles_category_idx, search_articles_published_idx, search_published_articles_pkey
+  constraints: search_published_articles_article_id_not_null[n], search_published_articles_category_id_not_null[n], search_published_articles_content_not_null[n], search_published_articles_pkey[PK], search_published_articles_published_at_not_null[n], search_published_articles_title_not_null[n], search_published_articles_updated_at_not_null[n]
+
+✓ search_query_logs
+  columns: search_id(bigint,not null), query_text(character varying,not null), result_count(integer,not null), searched_at(timestamp with time zone,not null)
+  indexes: search_query_logs_pkey, search_query_logs_term_idx, search_query_logs_zero_result_idx
+  constraints: search_query_logs_pkey[PK], search_query_logs_query_text_not_null[n], search_query_logs_result_count_check[CHECK], search_query_logs_result_count_not_null[n], search_query_logs_search_id_not_null[n], search_query_logs_searched_at_not_null[n]
+
+✓ search_result_clicks
+  columns: click_id(bigint,not null), search_id(bigint,not null), article_id(bigint,not null), clicked_at(timestamp with time zone,not null)
+  indexes: clicks_search_idx, search_result_clicks_pkey
+  constraints: search_result_clicks_article_id_not_null[n], search_result_clicks_click_id_not_null[n], search_result_clicks_clicked_at_not_null[n], search_result_clicks_pkey[PK], search_result_clicks_search_id_fkey[FK], search_result_clicks_search_id_not_null[n]
+
+✓ article_views
+  columns: view_id(bigint,not null), article_id(bigint,not null), viewed_at(timestamp with time zone,not null)
+  indexes: article_views_id_idx, article_views_pkey
+  constraints: article_views_article_id_not_null[n], article_views_pkey[PK], article_views_view_id_not_null[n], article_views_viewed_at_not_null[n]
+
+✓ helpfulness_votes
+  columns: vote_id(bigint,not null), article_id(bigint,not null), user_id(bigint,not null), helpful(boolean,not null), created_at(timestamp with time zone,not null), updated_at(timestamp with time zone,not null)
+  indexes: helpfulness_votes_article_id_user_id_key, helpfulness_votes_pkey
+  constraints: helpfulness_votes_article_id_not_null[n], helpfulness_votes_article_id_user_id_key[UNIQUE], helpfulness_votes_created_at_not_null[n], helpfulness_votes_helpful_not_null[n], helpfulness_votes_pkey[PK], helpfulness_votes_updated_at_not_null[n], helpfulness_votes_user_id_not_null[n], helpfulness_votes_vote_id_not_null[n]
+
+✓ article_feedback
+  columns: feedback_id(bigint,not null), article_id(bigint,not null), user_id(bigint,not null), comment_text(character varying,not null), sentiment_status(character varying,not null), sentiment_label(character varying), sentiment_confidence(double precision), created_at(timestamp with time zone,not null)
+  indexes: article_feedback_pkey, article_feedback_sentiment_idx
+  constraints: article_feedback_article_id_not_null[n], article_feedback_comment_text_not_null[n], article_feedback_created_at_not_null[n], article_feedback_feedback_id_not_null[n], article_feedback_pkey[PK], article_feedback_sentiment_confidence_check[CHECK], article_feedback_sentiment_status_not_null[n], article_feedback_user_id_not_null[n]
