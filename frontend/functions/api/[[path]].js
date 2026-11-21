@@ -19,6 +19,9 @@ function targetService(path, method) {
   if (/^\/(?:csrf-token|reviews)(?:\/|$)/.test(route)) {
     return "editorial";
   }
+  if (method === "POST" && /^\/articles\/\d+\/reviews$/.test(route)) {
+    return "editorial";
+  }
   if (/^\/editorial(?:\/|$)/.test(route)) {
     return "editorial";
   }
