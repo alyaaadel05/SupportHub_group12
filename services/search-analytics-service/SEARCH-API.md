@@ -1,6 +1,7 @@
 # Search & Analytics Service – API and Ranking Rule
 
 Base URL (local): `http://localhost:3004`
+Base URL (production): `https://supporthub-search-analytics.vercel.app` (the frontend reaches it through `https://supporthub-group12.pages.dev/api/...`)
 All responses are JSON. Rate limit on `/api/*`: **300 requests per 15 minutes per IP** (then `429`).
 
 ## 1. Search ranking rule
@@ -34,7 +35,7 @@ All responses are JSON. Rate limit on `/api/*`: **300 requests per 15 minutes pe
 | Parameter | Rule | Default |
 |---|---|---|
 | `q` | Text, max 100 characters | empty (all) |
-| `categoryID` | Positive whole number | none |
+| `category` (also `categoryID` / `categoryId`) | Positive whole number | none |
 | `page` | Whole number 1–100 | 1 |
 | `pageSize` | Whole number 1–50 | 10 |
 
@@ -73,11 +74,13 @@ Every search is saved in `search_query_logs` (query text, result count, time).
 
 \* `editor` is allowed temporarily until the team migrates it to `reviewer`.
 
-**Overview response fields**
+**Overview response fields** (formulas in `ANALYTICS.md`)
 `totalSearches`, `successfulSearches`, `zeroResultSearches`, `searchSuccessRate`, `zeroResultRate`,
 `searchesWithClicks`, `clickThroughRate`, `totalArticleViews`, `totalVotes`, `helpfulVotes`,
 `unhelpfulVotes`, `helpfulnessRate`, `popularSearchTerms`, `knowledgeGaps` (searches with no results),
-`mostViewedArticles`, `sentimentBreakdown`, `poorlyRatedArticles` (more unhelpful than helpful votes, worst first).
+`mostViewedArticles`, `sentimentBreakdown`, `poorlyRatedArticles` (at least `poorlyRatedMinVotes` votes, default 3,
+and more unhelpful than helpful votes, worst first), `poorlyRatedMinVotes`, `dailyActivity` (searches, views and votes
+for each of the last 7 days), `trendingArticles` (most viewed in the last 7 days).
 
 **Votes, feedback and exports also require:**
 - `Origin` header = the SupportHub frontend address (else 403)
@@ -101,7 +104,7 @@ Body: `{ "articleId": 1 }`
 - `x-service-timestamp`: time in milliseconds (must be within 5 minutes)
 - `x-service-signature`: HMAC-SHA256 of `sender, timestamp, method, path, SHA-256(body)`
 Unknown sender, wrong signature or old timestamp → **401**.
-The Search service never trusts the notification content: it fetches the article from the Article Service and indexes it **only if its status is `published`**.
+The Search service never trusts the notification content: it fetches the article from the Article Service (`ARTICLE_SERVICE_URL` + `/internal/articles/:id`) and indexes it **only if its status is `published`**.
 
 Initial / repair sync: `node scripts/sync-published.js` (read-only from `articles`, writes only `search_published_articles`, safe to run twice).
 
@@ -114,6 +117,7 @@ Initial / repair sync: `node scripts/sync-published.js` (read-only from `article
 | 401 | Not logged in, or invalid internal service credentials |
 | 403 | Wrong role, wrong origin, missing/invalid CSRF token, failed Turnstile |
 | 404 | Article not published / not found, export not found, unknown route |
+| 409 | **Not used on purpose.** A user's second vote on the same article updates the first one (`INSERT … ON CONFLICT (article_id, user_id) DO UPDATE`) instead of returning a conflict, so votes can be changed and duplicates are impossible (tested: 22 votes, including 20 simultaneous → 1 row, `evidence/vote-abuse.txt`). |
 | 413 | Request body larger than 100 KB |
 | 429 | Too many requests (rate limit) |
 | 500 | Unexpected server error (details only in server logs) |
