@@ -23,3 +23,5 @@ Live integration tests — 2026-11-21 (Cloudflare pages.dev -> Search & Analytic
    Shows "Route not found": Cloudflare still serves the old js/analytics.js
    (calls /analytics/summary). Fixed version is on feature/nermeen-search-feedback-analytics,
    waiting for deployment to Cloudflare.                                       PENDING
+7. Live CSRF (editor logged in, request without X-CSRF-Token from the browser console)
+   POST /api/articles/1/votes -> 403 {"error":"CSRF token required"}           PASS (forged request blocked)
