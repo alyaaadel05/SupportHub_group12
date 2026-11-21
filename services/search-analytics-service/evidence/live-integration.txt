@@ -25,3 +25,7 @@ Live integration tests — 2026-11-21 (Cloudflare pages.dev -> Search & Analytic
    waiting for deployment to Cloudflare.                                       PENDING
 7. Live CSRF (editor logged in, request without X-CSRF-Token from the browser console)
    POST /api/articles/1/votes -> 403 {"error":"CSRF token required"}           PASS (forged request blocked)
+
+8. XSS-safe output (live)
+   Searched: <img src=x onerror=alert('xss')>
+   Dashboard Knowledge Gaps shows it as plain text, no popup, no image   PASS (textContent, never innerHTML)
