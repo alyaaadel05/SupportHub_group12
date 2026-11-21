@@ -1,0 +1,25 @@
+Live integration tests — 2026-11-21 (Cloudflare pages.dev -> Search & Analytics on Vercel -> Neon)
+
+1. Shared Identity session
+   Author logged in on https://supporthub-group12.pages.dev
+   GET /api/analytics/overview -> 403 {"error":"Reviewer or admin required"}   PASS (session recognised, role enforced)
+   Editor (role fixed by Alyaa): GET /api/auth/me -> "role":"editor"
+   GET /api/analytics/overview -> 200 with real data                           PASS
+
+2. No login
+   GET /api/analytics/overview, /api/analytics/exports -> 401 "Login required"  PASS (evidence/vercel-online.txt)
+
+3. Helpfulness vote (editor, articles page, Turnstile + CSRF passed)
+   Message: "Thank you for your feedback!"
+   Overview: totalVotes 1, helpfulVotes 1, unhelpfulVotes 0                     PASS
+
+4. Duplicate / changed vote (same user, voted Not helpful)
+   Overview: totalVotes 1, helpfulVotes 0, unhelpfulVotes 1                     PASS (vote updated, not duplicated)
+
+5. Minimum-sample rule
+   Article now 0% helpful but only 1 vote -> poorlyRatedArticles: []          PASS (needs >= 3 votes)
+
+6. Live analytics page
+   Shows "Route not found": Cloudflare still serves the old js/analytics.js
+   (calls /analytics/summary). Fixed version is on feature/nermeen-search-feedback-analytics,
+   waiting for deployment to Cloudflare.                                       PENDING
