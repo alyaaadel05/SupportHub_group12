@@ -16,6 +16,9 @@ function targetService(path, method) {
     return "identity";
   }
 
+  if (/^\/(?:csrf-token|reviews)(?:\/|$)/.test(route)) {
+    return "editorial";
+  }
   if (/^\/editorial(?:\/|$)/.test(route)) {
     return "editorial";
   }
