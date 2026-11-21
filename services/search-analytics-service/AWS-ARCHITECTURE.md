@@ -20,11 +20,19 @@ Recreate everything with: `bash infra/setup-floci.sh` (safe to run twice).
 ## 2. The three AWS services
 | Service | Resource | What the app does with it | Code |
 |---|---|---|---|
-| DynamoDB | Table `supporthub-search-counters` | +1 per search term / zero-result search / article view; reviewers read the top 10 (`GET /api/analytics/live-counters`) | `services/countersService.js` |
+| DynamoDB | Table `supporthub-search-counters` | Counts searches per term, zero-result searches and article views. Counts are queued in memory and written in batches every 5 s (one `UpdateItem` per key, `ADD`), so a search never waits for DynamoDB. Reviewers read the top 10 (`GET /api/analytics/live-counters`) | `services/countersService.js` |
 | CloudWatch | Namespace `SupportHub/Search` | Sends `Requests`, `LatencyMs`, `ClientErrors`, `ServerErrors`, `RateLimited`, `Searches`, `ZeroResultSearches` (batched every 10 s) | `services/metricsService.js`, `middleware/metrics.js` |
 | S3 | Bucket `supporthub-search-analytics-exports` (public access blocked, AES256 encryption) | Reviewers create, list and download CSV analytics reports (`/api/analytics/exports`) | `services/exportService.js` |
 
 Details: `AWS-DYNAMODB.md` (counters, Neon responsibility, failure test).
+
+**Why batching:** load testing showed that one DynamoDB call per search was the bottleneck
+(p95 ≈ 1.74 s at 100 users). After batching: p95 ≈ 160 ms and ≈ 85 req/s (see `SCALING.md`).
+Trade-off: if the service stops before a flush, up to 5 s of counts can be lost. That is
+acceptable because Neon remains the source of truth.
+
+Both DynamoDB and S3 are visible on the analytics dashboard (local): the **Live Counters (AWS DynamoDB)**
+section and the **Export analytics to S3** button with the list of exports.
 
 ## 3. Why the CloudWatch metrics are meaningful
 | Metric | What it tells us | Example action |
@@ -46,6 +54,7 @@ Verified: 3 real searches → CloudWatch `Searches` Sum = 3.0.
 - CSV-injection protection: cells starting with `=`, `+`, `-`, `@` are prefixed with `'` so Excel does not run them.
 - Download names must match `analytics-YYYYMMDDTHHMMSSZ.csv` (blocks path tricks such as `../.env`).
 - Verified: report values (19 searches, 7 zero-result, 5 views) matched Neon exactly.
+- Verified from the dashboard (21 Nov): "Export analytics to S3" → `analytics-20261121T125024Z.csv` (29 rows), listed and downloaded.
 
 \* `editor` allowed temporarily until the team renames it to `reviewer`.
 
@@ -71,8 +80,9 @@ The service uses its own IAM user `search-analytics-service` (policy `infra/iam/
 | 7 | Service search + view + export using these keys | Allow | ✅ Counters, metrics and S3 report written |
 
 ## 6. Failure behaviour
-- DynamoDB or CloudWatch down → search still returns 200; one safe log line (`... failed: <error name>`); recovers automatically (tested with `docker stop/start nermeen-floci`).
+- DynamoDB or CloudWatch down → search still returns 200; one safe log line (`... failed: <error name>`); recovers automatically (tested with `docker stop/start nermeen-floci`). Because writes are batched, a failure never slows down a search.
 - S3 not configured → export returns 503; missing report → 404.
+- On the Vercel deployment no AWS variables are set: counters and metrics are skipped, the dashboard shows "unavailable" for live counters and exports return 503, while search, voting and analytics keep working from Neon.
 
 ## 7. Floci limitations
 - Floci does not evaluate the `cloudwatch:namespace` condition, so the metrics permission could not be limited to `SupportHub/Search` there. On real AWS add: `"Condition": {"StringEquals": {"cloudwatch:namespace": "SupportHub/Search"}}`.
