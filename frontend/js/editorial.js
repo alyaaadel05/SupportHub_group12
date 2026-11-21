@@ -819,6 +819,7 @@ async function loadReviewQueue() {
         showMessage("review-message", "Review " + decision + ".");
 
         await loadReviewQueue();
+        await loadApprovedReviews();
         await loadPublishedArticles();
       } catch (error) {
         showMessage("review-message", error.message);
@@ -845,6 +846,139 @@ async function loadReviewQueue() {
 
     card.append(approveButton, rejectButton);
     container.appendChild(card);
+  }
+}
+
+
+async function editorialWrite(path, method, body) {
+  const tokenResponse = await fetch("/api/csrf-token", {
+    credentials: "include",
+    cache: "no-store"
+  });
+
+  if (!tokenResponse.ok) {
+    throw Error("Could not obtain Editorial CSRF token.");
+  }
+
+  const data = await tokenResponse.json();
+
+  if (!/^[a-f0-9]{64}$/i.test(data.csrfToken || "")) {
+    throw Error("Invalid CSRF token.");
+  }
+
+  const options = {
+    method,
+    credentials: "include",
+    headers: {
+      "X-CSRF-Token": data.csrfToken,
+      "Content-Type": "application/json"
+    }
+  };
+
+  if (body !== undefined) {
+    options.body = JSON.stringify(body);
+  }
+
+  const response = await fetch(path, options);
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw Error(
+      result.error ||
+      result.message ||
+      "Editorial request failed: HTTP " + response.status
+    );
+  }
+
+  return result;
+}
+
+async function loadApprovedReviews() {
+  const container = document.getElementById("review-list");
+  if (!container) return;
+
+  const result = await api("/reviews?status=approved");
+  const reviews = Array.isArray(result.reviews)
+    ? result.reviews
+    : [];
+
+  const section = el("section");
+  section.appendChild(
+    el("h3", "Approved - Awaiting Publication")
+  );
+
+  const seen = new Set();
+  let count = 0;
+
+  for (const review of reviews) {
+    const article = review.article || {};
+    const articleId = Number(
+      review.article_id ?? review.articleId ?? article.id
+    );
+
+    if (
+      !Number.isSafeInteger(articleId) ||
+      articleId <= 0 ||
+      seen.has(articleId) ||
+      article.status !== "approved"
+    ) {
+      continue;
+    }
+
+    seen.add(articleId);
+
+    const card = el("article", "", "article-card");
+
+    card.appendChild(
+      el("h3", article.title || "Article #" + articleId)
+    );
+
+    card.appendChild(
+      el("p", "Article ID: " + articleId)
+    );
+
+    const button = actionButton("Publish", async () => {
+      const confirmed = window.confirm(
+        "Publish Article " + articleId +
+        "? Only continue after Salma confirms the publication pipeline is ready."
+      );
+
+      if (!confirmed) return;
+
+      button.disabled = true;
+
+      try {
+        const publication = await editorialWrite(
+          "/api/articles/" + articleId + "/publication",
+          "PATCH"
+        );
+
+        if (publication.status !== "published") {
+          throw Error("Publication was not confirmed.");
+        }
+
+        showMessage(
+          "review-message",
+          "Article " + articleId + " published successfully."
+        );
+
+        await loadReviewQueue();
+        await loadApprovedReviews();
+        await loadPublishedArticles();
+      } catch (error) {
+        showMessage("review-message", error.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    card.appendChild(button);
+    section.appendChild(card);
+    count++;
+  }
+
+  if (count > 0) {
+    container.appendChild(section);
   }
 }
 
@@ -885,16 +1019,10 @@ async function loadPublishedArticles() {
         if (!comment || !comment.trim()) return;
 
         try {
-          await api(
-            "/editorial/" +
-            encodeURIComponent(article.id) +
-            "/flag",
-            {
-              method: "POST",
-              body: {
-                comment: comment.trim()
-              }
-            }
+          await editorialWrite(
+            "/api/articles/" + encodeURIComponent(article.id) + "/flags",
+            "POST",
+            { reason: comment.trim() }
           );
 
           showMessage(
@@ -931,6 +1059,7 @@ async function initializeReview() {
   await requireRole(["editor", "admin"]);
 
   await loadReviewQueue();
+  await loadApprovedReviews();
   await loadPublishedArticles();
 }
 

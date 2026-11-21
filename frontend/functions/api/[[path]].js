@@ -22,6 +22,13 @@ function targetService(path, method) {
   if (method === "POST" && /^\/articles\/\d+\/reviews$/.test(route)) {
     return "editorial";
   }
+  if (
+    (method === "PATCH" && /^\/articles\/\d+\/publication$/.test(route)) ||
+    (method === "POST" && /^\/articles\/\d+\/flags$/.test(route))
+  ) {
+    return "editorial";
+  }
+
   if (/^\/editorial(?:\/|$)/.test(route)) {
     return "editorial";
   }
