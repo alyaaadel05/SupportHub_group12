@@ -59,7 +59,10 @@ app.use(
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_ORIGIN,
+    origin: (process.env.FRONTEND_ORIGIN || "")
+      .split(",")
+      .map(value => value.trim())
+      .filter(Boolean),
     credentials: true,
     methods: [
       "GET",
@@ -245,6 +248,7 @@ app.get(
 
 // -----------------------------------------
 // 9. INTERNAL ARTICLE STATUS UPDATES
+// WITH OPERATION ID IDEMPOTENCY
 // -----------------------------------------
 
 app.patch(
@@ -252,6 +256,8 @@ app.patch(
   requireServiceSignature,
   async (req, res, next) => {
     try {
+      // Only the authenticated Editorial Service
+      // may perform internal status transitions.
       if (
         req.serviceName !== "editorial-service"
       ) {
@@ -261,24 +267,26 @@ app.patch(
       }
 
       const result =
-        await articleService.transitionStatus(
-          articleService.validId(
-            req.params.id
-          ),
+        await articleService.transitionEditorialStatus(
+          articleService.validId(req.params.id),
           req.body?.from,
-          req.body?.to
+          req.body?.to,
+          req.body?.operationId
         );
 
+      // New operations with an incorrect
+      // expected status must not proceed.
       if (!result) {
         return res.status(409).json({
-          error:
-            "Invalid article status transition"
+          error: "Invalid article status transition"
         });
       }
 
-      res.json({
-        article: result
-      });
+      // transitionEditorialStatus already returns
+      // the response object { article }.
+      // Identical retries return that same object.
+      return res.json(result);
+
     } catch (error) {
       next(error);
     }

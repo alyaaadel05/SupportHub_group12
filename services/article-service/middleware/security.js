@@ -142,7 +142,11 @@ function assertOrigin(allowedOrigin) {
 
     const incomingOrigin = req.get("Origin");
 
-    if (!allowedOrigin || incomingOrigin !== allowedOrigin) {
+    if (!allowedOrigin || !String(allowedOrigin || "")
+      .split(",")
+      .map(value => value.trim())
+      .filter(Boolean)
+      .includes(incomingOrigin)) {
       return res.status(403).json({
         error: "Origin not allowed"
       });

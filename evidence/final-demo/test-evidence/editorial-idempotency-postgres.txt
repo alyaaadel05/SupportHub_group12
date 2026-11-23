@@ -1,0 +1,30 @@
+﻿SupportHub Group 12 - Article Service
+Real PostgreSQL Idempotency Verification
+Owner: Alyaa
+Date: 2026-11-19
+
+Test environment:
+Isolated PostgreSQL 16 Docker container
+Database: supporthub_idempotency_test
+Article ID: 10
+
+1. Sending two simultaneous requests...
+PASS: Both requests returned the same result
+
+2. Retrying the same operation...
+PASS: Original result returned
+
+3. Checking conflicting operation ID...
+PASS: Conflicting reuse rejected
+
+4. Checking incorrect expected status...
+PASS: Incorrect status rejected
+
+5. Checking PostgreSQL records...
+PASS: Article status = approved
+PASS: Stored operations = 1
+
+ALL REAL POSTGRESQL TESTS PASSED
+
+Note: This test used an isolated local PostgreSQL database,
+not the shared Neon database.

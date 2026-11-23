@@ -112,10 +112,13 @@ function checkOrigin(req, res, next) {
     return next();
   }
 
-  const allowed = process.env.FRONTEND_ORIGIN;
+  const allowed = (process.env.FRONTEND_ORIGIN || "")
+    .split(",")
+    .map(value => value.trim())
+    .filter(Boolean);
   const origin = req.get("Origin");
 
-  if (!allowed) {
+  if (allowed.length === 0) {
     return res.status(500).json({
       error: "FRONTEND_ORIGIN is not configured"
     });
@@ -125,7 +128,7 @@ function checkOrigin(req, res, next) {
     return next();
   }
 
-  if (origin !== allowed) {
+  if (!allowed.includes(origin)) {
     return res.status(403).json({
       error: "Request origin not allowed"
     });
