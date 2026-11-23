@@ -1,0 +1,4 @@
+Tailscale connectivity — 2026-11-21T19:20:17Z
+My Tailscale IP: 100.69.7.28 | Alyaa (Article): 100.111.138.123
+From inside nermeen-search container -> Article health: {"status":"ok","service":"article-service"}
+Unsigned POST /internal/publications -> {"error":"Invalid service credentials"}
