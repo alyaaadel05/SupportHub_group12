@@ -13,6 +13,7 @@ Example: during exam week, thousands of students search for help articles, but v
 | All data in Neon PostgreSQL | Searches, views, votes and feedback are written to the shared database, not to local files. |
 | Pooled database connection (`DATABASE_URL_POOLED`, `DB_POOL_MAX` connections per instance: 5 in Docker, 3 on Vercel) | Many instances share Neon's connection pooler instead of each opening many direct connections. |
 | Batched AWS calls (DynamoDB counters every 5 s, CloudWatch metrics every 10 s) | A search never waits for AWS; many searches for the same term become one DynamoDB update. |
+| Short in-memory caches with single-flight loading (`SEARCH_CACHE_MS=5000`, `ANALYTICS_CACHE_MS=15000`) | Many simultaneous searches share one article-list query, and many editors opening the dashboard share one set of 11 analytics queries, so the database pool is not exhausted. The search cache is cleared immediately on publish/unpublish. Only public article data and aggregate totals are cached, never user data. |
 | Separate URL/port (3004) | Load balancers or Vercel can route traffic only to this service. |
 
 ## 3. How it scales in each environment
@@ -29,6 +30,7 @@ Example: during exam week, thousands of students search for help articles, but v
 4. **External APIs** – Cloudflare Turnstile and Hugging Face calls are limited by those providers; failures do not stop search, only votes/feedback features.
 5. **Batched counters can lose a few seconds of counts** if an instance stops before its next flush. Neon remains the source of truth for analytics; DynamoDB holds live counters only.
 6. **Floci is local only** – the AWS features run on the local emulator; on Vercel they are switched off safely (see `DEPLOYMENT.md`).
+7. **Caches are per instance** – publish/unpublish clears the cache only on the instance that receives the notification. With several copies, another instance can show the old article list for up to 5 s (search) or old dashboard totals for up to 15 s (analytics) before its cache expires. A shared cache (e.g. Redis) would remove this delay.
 
 ## 5. Results (k6, `load-tests/search-load-test.js`)
 Profiles: low (5 users, 30 s), moderate (25 users, 1 min), high (100 users, 1 min). Thresholds: p95 < 800 ms and < 1 % failed requests. Raw outputs are in `load-tests/results/`.
@@ -56,3 +58,30 @@ Files: `load-tests/results/final-moderate.txt`, `load-tests/results/final-high.t
 The median stayed around 150 ms and throughput stayed close to the optimized result (~85 req/s), so the optimization still holds after the later changes. The higher p95 than in 5.1 comes from a few slow requests (max 1–2 s), most likely Neon pooler connection setup at the start of the run.
 
 Note: load tests write real search logs, so they increase the search totals in analytics (visible as the 19 Nov spike in the 7-day activity).
+
+### 5.3 Stress test: 1,000 concurrent users, search only
+Same load-test container (port 3014, `RATE_LIMIT_MAX=1000000`), ramping 250 → 500 → 1,000 users and holding 1,000 users for 60 s.
+
+| Requests | Failed | Average | p95 | Throughput |
+|---|---|---|---|---|
+| 12,027 | 0 (0.00 %) | 8.24 s | 14.46 s | 71.7 req/s |
+
+File: `load-tests/results/stress-1000.txt`.
+
+Every request succeeded and the service answered normally right after the test. Latency rose far above the 800 ms target because one instance handles about 72–85 req/s; beyond that, requests wait in the queue instead of failing.
+
+### 5.4 Mixed 1,000-user test across the whole service (23 Nov)
+`load-tests/service-mix-test.js` simulates real use: 70 % searches, 15 % article views, 10 % logged-in author votes and 5 % logged-in editor analytics. Users log in through the Identity Service during setup, and up to 1,000 users run for 2 min 45 s.
+
+| Version | Failed requests | Cause / change |
+|---|---|---|
+| Before (`service-mix-1000.txt`) | **64.29 %** | Database pool exhaustion (`timeout exceeded when trying to connect`): every search reloaded the article list and every dashboard request ran 11 queries, so the pool ran out. Some errors also tried to send a second response (`ERR_HTTP_HEADERS_SENT`). |
+| After (`service-mix-1000-cached.txt`) | **0.00 %** (0 of 14,178) | Short caches with single-flight loading (section 2), and the error handler now returns `503 Service busy` with `Retry-After` on a pool timeout and never sends a response twice. |
+
+Results after the fix:
+
+| Action | Average | p95 |
+|---|---|---|
+| All requests | 6.75 s | 18.78 s |
+| Search | 5.13 s | 8.92 s |
+|
