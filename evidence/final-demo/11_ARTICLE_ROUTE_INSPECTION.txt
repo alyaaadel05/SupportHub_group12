@@ -1,0 +1,35 @@
+﻿
+  services\article-service\server.js:206:
+  services\article-service\server.js:207:app.get(
+> services\article-service\server.js:208:  "/internal/articles/:id",
+  services\article-service\server.js:209:  requireServiceSignature,
+  services\article-service\server.js:210:  async (req, res, next) => {
+  services\article-service\server.js:211:    try {
+  services\article-service\server.js:212:      const id = articleService.validId(
+  services\article-service\server.js:213:        req.params.id
+  services\article-service\server.js:250:
+  services\article-service\server.js:251:app.patch(
+> services\article-service\server.js:252:  "/internal/articles/:id/status",
+  services\article-service\server.js:253:  requireServiceSignature,
+  services\article-service\server.js:254:  async (req, res, next) => {
+  services\article-service\server.js:255:    try {
+  services\article-service\server.js:256:      // Only the authenticated Editorial Service
+  services\article-service\server.js:257:      // may perform internal status transitions.
+  services\article-service\server.js:265:
+  services\article-service\server.js:266:      const result =
+> services\article-service\server.js:267:        await articleService.transitionEditorialStatus(
+  services\article-service\server.js:268:          articleService.validId(req.params.id),
+  services\article-service\server.js:269:          req.body?.from,
+  services\article-service\server.js:270:          req.body?.to,
+  services\article-service\server.js:271:          req.body?.operationId
+  services\article-service\server.js:272:        );
+  services\article-service\server.js:280:      }
+  services\article-service\server.js:281:
+> services\article-service\server.js:282:      // transitionEditorialStatus already returns
+  services\article-service\server.js:283:      // the response object { article }.
+  services\article-service\server.js:284:      // Identical retries return that same object.
+  services\article-service\server.js:285:      return res.json(result);
+  services\article-service\server.js:286:
+  services\article-service\server.js:287:    } catch (error) {
+
+

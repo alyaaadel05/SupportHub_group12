@@ -158,3 +158,33 @@ exports.duplicates = async (req, res, next) => {
     next(error);
   }
 };
+
+ // SUBMIT ARTICLE FOR REVIEW
+exports.submit = async (req, res, next) => {
+  try {
+    const id = articles.validId(req.params.id);
+
+    const article = await articles.transitionStatus(
+      id,
+      "draft",
+      "in_review",
+      req.user
+    );
+
+    if (!article) {
+      return res.status(409).json({
+        error: "Article is not a draft, does not exist, or access is denied"
+      });
+    }
+
+    await req.app.locals.audit(
+      req,
+      "article.submit",
+      article.id
+    );
+
+    return res.json({ article });
+  } catch (error) {
+    next(error);
+  }
+};

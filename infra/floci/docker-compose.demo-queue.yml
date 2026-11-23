@@ -1,0 +1,8 @@
+services:
+  article-service:
+    environment:
+      SQS_QUEUE_URL: "http://floci:4566/000000000000/supporthub-article-events-demo"
+
+  article-outbox-worker:
+    environment:
+      SQS_QUEUE_URL: "http://floci:4566/000000000000/supporthub-article-events-demo"
