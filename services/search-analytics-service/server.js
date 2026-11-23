@@ -1,4 +1,3 @@
-
 require("dotenv").config();
 
 const crypto = require("node:crypto");
@@ -10,7 +9,8 @@ const PgSession = require("connect-pg-simple")(session);
 const rateLimit = require("express-rate-limit");
 
 const pool = require("./db/pool");
-const { requireLogin } = require("./middleware/security");
+const { requireLogin, noStore } = require("./middleware/security");
+const { requestMetrics } = require("./middleware/metrics");
 
 const searchRoutes = require("./routes/searchRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
@@ -37,6 +37,9 @@ const app = express();
 
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
+
+// CloudWatch request metrics (count, latency, errors) for every request.
+app.use(requestMetrics);
 
 // --------------------------------------
 // 1. BASIC SECURITY
@@ -95,12 +98,17 @@ app.use(session({
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 300,
+   limit: Number(process.env.RATE_LIMIT_MAX || 300),
   standardHeaders: "draft-7",
   legacyHeaders: false
 });
 
 app.use("/api", limiter);
+
+// Never cache private responses (analytics, votes, feedback, CSRF, internal).
+app.use("/api/analytics", noStore);
+app.use("/api/articles", noStore);
+app.use("/internal", noStore);
 
 // --------------------------------------
 // 4. HEALTH CHECK
@@ -175,6 +183,30 @@ app.use((req, res) => {
 // --------------------------------------
 
 app.use((error, req, res, next) => {
+  // A response was already sent: never try to send a second one
+  // (prevents ERR_HTTP_HEADERS_SENT under heavy load).
+  if (res.headersSent) {
+    return next(error);
+  }
+
+  // Database pool is full under heavy load: tell the client to retry
+  // instead of returning a generic 500.
+  if (/timeout exceeded when trying to connect|Connection terminated due to connection timeout/i
+      .test(error.message || "")) {
+    console.error("Search & Analytics busy:", error.message);
+    res.set("Retry-After", "5");
+    return res.status(503).json({
+      error: "Service busy, please retry"
+    });
+  }
+
+  // Upstream / dependency failures (Article Service, Turnstile, S3 config):
+  // return the safe message with 502/503 so callers know the real cause.
+  if (error.status === 502 || error.status === 503) {
+    console.error("Search & Analytics upstream error:", error.message);
+    return res.status(error.status).json({ error: error.message });
+  }
+
   if (error.type === "entity.too.large") {
     return res.status(413).json({
       error: "Request too large"
@@ -222,4 +254,3 @@ if (require.main === module) {
 }
 
 module.exports = app;
-

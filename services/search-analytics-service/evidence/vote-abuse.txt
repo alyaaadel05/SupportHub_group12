@@ -1,0 +1,10 @@
+
+Vote abuse tests — 2026-11-21T13:32:52Z (local, editor account)
+1. Invalid vote value "yes"        -> 400  {"error":"helpful must be boolean"}
+2. Invalid article id "abc"        -> 400  {"error":"Invalid ID"}
+3. Unpublished (draft) article 2    -> 404  {"error":"Published article not found"}
+4. Article that does not exist      -> 404  {"error":"Published article not found"}
+5. Try to vote as user 1            -> 200  {"articleId":1,"helpful":true,"saved":true}
+6. 20 simultaneous votes on article 1 (alternating helpful/unhelpful)...
+200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 
+7. Rows in helpfulness_votes for article 1 (per user): [{"user_id":"10","rows":1}]

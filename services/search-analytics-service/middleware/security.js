@@ -10,12 +10,18 @@ function requireLogin(req, res, next) {
   if (!req.user) return res.status(401).json({ error: "Login required" });
   next();
 }
+
+// Roles allowed to open administrative analytics. The shared users table
+// uses "editor"/"admin"; "reviewer" is the role name used in the proposal.
+const ANALYTICS_ROLES = ["reviewer", "editor", "admin"];
 function requireReviewer(req, res, next) {
   req.user = sessionUser(req);
   if (!req.user) return res.status(401).json({ error: "Login required" });
-  if (req.user.role !== "reviewer") return res.status(403).json({ error: "Reviewer required" });
+  if (!ANALYTICS_ROLES.includes(req.user.role))
+    return res.status(403).json({ error: "Reviewer or admin required" });
   next();
 }
+
 function requireBrowserWrite(req, res, next) {
   if (req.get("origin") !== process.env.FRONTEND_ORIGIN)
     return res.status(403).json({ error: "Origin not allowed" });
@@ -50,5 +56,12 @@ function requireEditorialSignature(req, res, next) {
     return res.status(401).json({ error: "Invalid service signature" });
   next();
 }
+// Private responses (logged-in or reviewer data) must never be stored
+// by browsers, proxies or the Vercel CDN.
+function noStore(req, res, next) {
+  res.set("Cache-Control", "no-store, private");
+  res.set("Pragma", "no-cache");
+  next();
+}
 module.exports = { sessionUser, requireLogin, requireReviewer, requireBrowserWrite,
-  makeSignature, requireEditorialSignature };
+  makeSignature, requireEditorialSignature, noStore };
