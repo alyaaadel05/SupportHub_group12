@@ -1,0 +1,35 @@
+==== SupportHub Test B (500) - up to 500 concurrent users (isolated local stack) ====
+Total HTTP requests (incl. setup logins): 60190
+Failed (non-2xx/3xx): 0.00%
+Latency avg 129 ms, p95 154 ms, max 11133 ms
+Throughput: 132.8 req/s
+
+Service    Role     Requests   2xx   4xx   429   5xx  err   p95
+---------  -------  --------  ----  ----  ----  ----  ---  --------
+article    author      13286  13286     0     0     0    0     80 ms
+article    public       5821  5821     0     0     0    0     46 ms
+editorial  editor       6454  6454     0     0     0    0     82 ms
+editorial  public        681   681     0     0     0    0     16 ms
+identity   author       3948  3948     0     0     0    0     39 ms
+identity   editor       2652  2652     0     0     0    0     39 ms
+identity   public       3251  3251     0     0     0    0     18 ms
+search     editor       2629  2629     0     0     0    0   4609 ms
+search     public      21464  21464     0     0     0    0   2825 ms
+
+By service: identity=9855 (p95 32 ms), article=19107 (p95 71 ms), editorial=7135 (p95 75 ms), search=24093 (p95 2902 ms)
+By role:    public=31217 (p95 573 ms), author=17234 (p95 68 ms), editor=11735 (p95 114 ms)
+
+By load level:
+Level       Requests   5xx   Failed%    p95
+----------  --------  ----  -------  --------
+ramp-125        1855     0    0.00%     23 ms
+hold-125        3737     0    0.00%     19 ms
+ramp-250        5600     0    0.00%     22 ms
+hold-250        7500     0    0.00%     23 ms
+ramp-500       11275     0    0.00%     26 ms
+hold-500       27584     0    0.00%    536 ms
+ramp-down       2635     0    0.00%   3746 ms
+
+Peak concurrent virtual users: 500
+Overall 5xx rate: 0.00%
+NOTE: 500-user variant. Does not demonstrate 1,000 concurrent users.
