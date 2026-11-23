@@ -97,7 +97,9 @@ async function handler(event) {
 
     defaultPool = new Pool({
       connectionString,
-      ssl: { rejectUnauthorized: true },
+      ssl: process.env.DATABASE_SSL === "false"
+        ? false
+        : { rejectUnauthorized: true },
       max: 2,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000

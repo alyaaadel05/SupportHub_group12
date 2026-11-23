@@ -129,6 +129,38 @@ async function getDecisionReplay(operationId, articleId, userId, decision, comme
   return result.rows[0];
 }
 
+async function getCompletedReview(operationId, knownOperation = null) {
+  const operation = knownOperation || await getOperation(pool, operationId);
+
+  if (!operation || operation.state !== "completed") {
+    return null;
+  }
+
+  if (!operation.result_review_id) {
+    throw new HttpError(
+      500,
+      "Completed workflow operation has no result review ID"
+    );
+  }
+
+  const result = await pool.query(
+    `SELECT *
+     FROM editorial_reviews
+     WHERE review_id = $1
+       AND article_id = $2`,
+    [operation.result_review_id, operation.article_id]
+  );
+
+  if (!result.rows[0]) {
+    throw new HttpError(
+      500,
+      "Completed workflow operation has no matching review result"
+    );
+  }
+
+  return result.rows[0];
+}
+
 async function finalizeSubmission(operation, claimToken) {
   const client = await pool.connect();
 
@@ -178,7 +210,12 @@ async function finalizeSubmission(operation, claimToken) {
 
     return review;
   } catch (error) {
-    await client.query("ROLLBACK");
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      error.rollbackError = rollbackError;
+    }
+
     throw error;
   } finally {
     client.release();
@@ -255,7 +292,12 @@ async function finalizeDecision(
 
     return result.rows[0];
   } catch (error) {
-    await client.query("ROLLBACK");
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      error.rollbackError = rollbackError;
+    }
+
     throw error;
   } finally {
     client.release();
@@ -328,6 +370,18 @@ async function submit(articleId, user) {
       claimed.claim_token
     );
   } catch (error) {
+    try {
+      const completedReview = await getCompletedReview(
+        operation.operationId
+      );
+
+      if (completedReview) {
+        return completedReview;
+      }
+    } catch (recoveryError) {
+      error.recoveryCheckError = recoveryError;
+    }
+
     try {
       await requireReconciliation(
         pool,
@@ -524,6 +578,18 @@ async function decide(articleId, user, body) {
     );
   } catch (error) {
     try {
+      const completedReview = await getCompletedReview(
+        operation.operationId
+      );
+
+      if (completedReview) {
+        return completedReview;
+      }
+    } catch (recoveryError) {
+      error.recoveryCheckError = recoveryError;
+    }
+
+    try {
       await requireReconciliation(
         pool,
         operation.operationId,
@@ -547,6 +613,24 @@ async function reconcileReviewOperation(operationId) {
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(operationId)
   ) {
     throw new HttpError(400, "A valid workflow operation ID is required");
+  }
+
+  const existingOperation = await getOperation(pool, operationId);
+
+  if (existingOperation?.state === "completed") {
+    const review = await getCompletedReview(
+      operationId,
+      existingOperation
+    );
+
+    return {
+      operationId,
+      state: "completed",
+      action: existingOperation.operation_type === "submit"
+        ? "submission_already_finalized"
+        : "decision_already_finalized",
+      review
+    };
   }
 
   const claimed = await claimReviewOperationForReconciliation(

@@ -89,6 +89,9 @@ function createMockDatabase({ duplicate = false, existingPending = false, existi
 
   return {
     db: {
+      async query(sql, values = []) {
+        return client.query(sql, values);
+      },
       async connect() {
         return client;
       }
@@ -119,6 +122,29 @@ test("processes a submitted article and commits its review", async () => {
   assert.equal(mock.wasReleased(), true);
 });
 
+test("acknowledges a duplicate event when Article Service is unavailable", async () => {
+  const mock = createMockDatabase({ duplicate: true });
+
+  const service = createArticleEventService({
+    db: mock.db,
+    fetchArticle: async () => {
+      throw new Error("Article Service unavailable");
+    }
+  });
+
+  const result = await service.processSubmittedEvent(validEvent);
+
+  assert.equal(result.status, "duplicate");
+  assert.equal(result.eventId, validEvent.eventId);
+  assert.ok(
+    mock.calls.some(call =>
+      call.sql.startsWith("SELECT event_type, article_id, submitted_by")
+    )
+  );
+  assert.ok(
+    !mock.calls.some(call => call.sql === "BEGIN")
+  );
+});
 test("does not create a second review for a duplicate event", async () => {
   const mock = createMockDatabase({ duplicate: true });
 
@@ -134,7 +160,7 @@ test("does not create a second review for a duplicate event", async () => {
   const result = await service.processSubmittedEvent(validEvent);
 
   assert.equal(result.status, "duplicate");
-  assert.ok(mock.calls.some(call => call.sql === "COMMIT"));
+  assert.ok(!mock.calls.some(call => call.sql === "BEGIN"));
   assert.ok(!mock.calls.some(call =>
     call.sql.startsWith("INSERT INTO editorial_reviews")
   ));
@@ -178,7 +204,10 @@ test("rejects an event when the article author does not match", async () => {
     /does not match article author/
   );
 
-  assert.equal(mock.calls.length, 0);
+  assert.equal(mock.calls.length, 1);
+  assert.ok(mock.calls[0].sql.startsWith(
+    "SELECT event_type, article_id, submitted_by"
+  ));
 });
 
 test("rejects an article that is not in review", async () => {
@@ -198,7 +227,11 @@ test("rejects an article that is not in review", async () => {
     /not in review/
   );
 
-  assert.equal(mock.calls.length, 0);
+  assert.ok(mock.calls.some(call => call.sql === "ROLLBACK"));
+  assert.ok(!mock.calls.some(call =>
+    call.sql.startsWith("INSERT INTO editorial_reviews")
+  ));
+  assert.equal(mock.wasReleased(), true);
 });
 
 test("rolls back when review creation fails", async () => {
@@ -274,4 +307,77 @@ test("rejects an existing pending review with a different submitter", async () =
 
   assert.ok(mock.calls.some(call => call.sql === "ROLLBACK"));
   assert.ok(!mock.calls.some(call => call.sql === "COMMIT"));
+});
+
+
+test("processes an event without submittedBy using the authoritative article author", async () => {
+  const mock = createMockDatabase();
+
+  const service = createArticleEventService({
+    db: mock.db,
+    fetchArticle: async () => ({
+      article_id: 42,
+      author_id: 10,
+      status: "in_review"
+    })
+  });
+
+  const { submittedBy, ...eventWithoutSubmitter } = validEvent;
+  const result = await service.processSubmittedEvent(eventWithoutSubmitter);
+
+  assert.equal(result.status, "processed");
+
+  const inboxInsert = mock.calls.find(call =>
+    call.sql.startsWith("INSERT INTO editorial_event_inbox")
+  );
+
+  assert.equal(inboxInsert.values[3], 10);
+});
+
+test("acknowledges an already processed event after the article leaves in_review", async () => {
+  const mock = createMockDatabase({ duplicate: true });
+
+  const service = createArticleEventService({
+    db: mock.db,
+    fetchArticle: async () => ({
+      article_id: 42,
+      author_id: 10,
+      status: "approved"
+    })
+  });
+
+  const result = await service.processSubmittedEvent(validEvent);
+
+  assert.equal(result.status, "duplicate");
+  assert.ok(!mock.calls.some(call => call.sql === "BEGIN"));
+  assert.ok(!mock.calls.some(call =>
+    call.sql.startsWith("INSERT INTO editorial_reviews")
+  ));
+});
+
+test("rejects an article with an invalid authoritative author ID", async () => {
+  const mock = createMockDatabase();
+
+  const service = createArticleEventService({
+    db: mock.db,
+    fetchArticle: async () => ({
+      article_id: 42,
+      author_id: 0,
+      status: "in_review"
+    })
+  });
+
+  await assert.rejects(
+    service.processSubmittedEvent({
+      eventId: "event-invalid-author",
+      eventType: "article.submitted",
+      articleId: 42
+    }),
+    /Invalid article author ID/
+  );
+
+  assert.equal(mock.calls.length, 1);
+  assert.ok(mock.calls[0].sql.startsWith(
+    "SELECT event_type, article_id, submitted_by"
+  ));
 });

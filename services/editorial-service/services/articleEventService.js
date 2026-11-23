@@ -21,7 +21,9 @@ function createArticleEventService({
 } = {}) {
   async function processSubmittedEvent(event) {
     const eventId =
-      typeof event?.eventId === "string" ? event.eventId.trim() : "";
+      typeof event?.eventId === "string"
+        ? event.eventId.trim()
+        : "";
 
     if (!eventId || eventId.length > 255) {
       const error = new Error("Invalid event ID");
@@ -35,30 +37,92 @@ function createArticleEventService({
       throw error;
     }
 
-    const articleId = positiveInteger(event.articleId, "article ID");
-    const submittedBy = positiveInteger(event.submittedBy, "submitter ID");
+    const articleId = positiveInteger(
+      event.articleId,
+      "article ID"
+    );
 
-    // Article Service publishes this event after changing the status.
-    // Never call reviewService.submit() from this event handler.
+    // Check the durable inbox before contacting Article Service.
+    // This lets already-processed events be acknowledged even if
+    // Article Service is temporarily unavailable.
+    const existingInbox = await db.query(
+      `SELECT event_type, article_id, submitted_by
+       FROM editorial_event_inbox
+       WHERE event_id = $1`,
+      [eventId]
+    );
+
+    if (existingInbox.rows.length > 0) {
+      const previous = existingInbox.rows[0];
+
+      if (
+        previous.event_type !== event.eventType ||
+        Number(previous.article_id) !== articleId
+      ) {
+        const error = new Error(
+          "Event ID was previously used with different event data"
+        );
+        error.status = 409;
+        throw error;
+      }
+
+      if (event.submittedBy !== undefined) {
+        const eventSubmitter = positiveInteger(
+          event.submittedBy,
+          "submitter ID"
+        );
+
+        if (eventSubmitter !== Number(previous.submitted_by)) {
+          const error = new Error(
+            "Event ID was previously used with different event data"
+          );
+          error.status = 409;
+          throw error;
+        }
+      }
+
+      return {
+        status: "duplicate",
+        eventId
+      };
+    }
+    // Article Service publishes the event after changing
+    // the article status to in_review.
+    // Its event payload does not contain submittedBy.
+    // Retrieve the authoritative author using HMAC authentication.
     const article = await fetchArticle(articleId);
 
     if (!article) {
-      const error = new Error("Article not found in Article Service");
+      const error = new Error(
+        "Article not found in Article Service"
+      );
       error.status = 404;
       throw error;
     }
 
-    if (Number(article.author_id) !== submittedBy) {
-      const error = new Error("Event submitter does not match article author");
-      error.status = 409;
-      throw error;
+    // The Article Service response is the source of truth.
+    const submittedBy = positiveInteger(
+      article.author_id,
+      "article author ID"
+    );
+
+    // If the event includes submittedBy, verify it.
+    // Never trust a submitter ID supplied by an event alone.
+    if (event.submittedBy !== undefined) {
+      const eventSubmitter = positiveInteger(
+        event.submittedBy,
+        "submitter ID"
+      );
+
+      if (eventSubmitter !== submittedBy) {
+        const error = new Error(
+          "Event submitter does not match article author"
+        );
+        error.status = 409;
+        throw error;
+      }
     }
 
-    if (article.status !== "in_review") {
-      const error = new Error("Submitted article is not in review");
-      error.status = 409;
-      throw error;
-    }
 
     const client = await db.connect();
 
@@ -72,7 +136,12 @@ function createArticleEventService({
          VALUES ($1, $2, $3, $4)
          ON CONFLICT (event_id) DO NOTHING
          RETURNING event_id`,
-        [eventId, event.eventType, articleId, submittedBy]
+        [
+          eventId,
+          event.eventType,
+          articleId,
+          submittedBy
+        ]
       );
 
       if (inserted.rowCount === 0) {
@@ -100,7 +169,19 @@ function createArticleEventService({
         }
 
         await client.query("COMMIT");
-        return { status: "duplicate", eventId };
+
+        return {
+          status: "duplicate",
+          eventId
+        };
+      }
+
+      if (article.status !== "in_review") {
+        const error = new Error(
+          "Submitted article is not in review"
+        );
+        error.status = 409;
+        throw error;
       }
 
       const review = await client.query(
@@ -148,7 +229,10 @@ function createArticleEventService({
 
       await client.query(
         `INSERT INTO editorial_status_events (
-           article_id, actor_id, previous_status, new_status
+           article_id,
+           actor_id,
+           previous_status,
+           new_status
          )
          VALUES ($1, $2, 'draft', 'in_review')`,
         [articleId, submittedBy]

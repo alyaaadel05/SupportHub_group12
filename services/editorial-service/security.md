@@ -226,9 +226,11 @@ The current automated Editorial Service security tests cover:
 - Missing, short, and incorrect cron secrets.
 - Valid cron-secret authentication.
 
-The latest complete Editorial Service test run reported:
+HTTP-level security tests (`tests/securityHttp.test.js`, S1–S8) additionally send real requests to the Editorial routes and `server.js` for unauthenticated access, author-vs-reviewer permissions, cross-author ownership, self-approval, CSRF/Origin, SQL injection, stored XSS, forged sessions and rate limiting. Detailed threat analysis and recorded results are in `docs/threat-model.md` and `docs/security-test-evidence.md`.
 
-**114 tests passed, 0 failed.**
+The latest complete Editorial Service test run (2026-11-23) reported:
+
+**151 tests passed, 0 failed.**
 
 These are automated test results. They do not independently establish production security, successful live integration, or complete deployment readiness.
 

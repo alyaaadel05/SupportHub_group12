@@ -7,7 +7,10 @@ const {
   createPublicationEventService
 } = require("../services/publicationEventService");
 
-function createFakePool({ claimedItem = null, updateRowCount = 1 } = {}) {
+function createFakePool({
+  claimedItem = null,
+  updateRowCount = 1
+} = {}) {
   const calls = [];
 
   return {
@@ -18,10 +21,12 @@ function createFakePool({ claimedItem = null, updateRowCount = 1 } = {}) {
 
       if (/WITH candidate AS/i.test(sql)) {
         return {
-          rows: claimedItem ? [{
-            ...claimedItem,
-            claim_token: values[0]
-          }] : [],
+          rows: claimedItem
+            ? [{
+                ...claimedItem,
+                claim_token: values[0]
+              }]
+            : [],
           rowCount: claimedItem ? 1 : 0
         };
       }
@@ -65,8 +70,12 @@ test("queues a publication event with a stable UUID and payload", async () => {
   const client = {
     query: async (sql, values) => {
       captured = { sql, values };
+
       return {
-        rows: [{ event_id: values[0], payload: JSON.parse(values[3]) }],
+        rows: [{
+          event_id: values[0],
+          payload: JSON.parse(values[3])
+        }],
         rowCount: 1
       };
     }
@@ -81,6 +90,7 @@ test("queues a publication event with a stable UUID and payload", async () => {
     captured.values[0],
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
   );
+
   assert.equal(captured.values[1], 42);
   assert.equal(captured.values[2], "editorial.publication.published");
   assert.equal(result.payload.data.articleId, 42);
@@ -97,12 +107,47 @@ test("rejects a publication event without required identifiers", async () => {
       { query: async () => ({ rows: [] }) },
       { articleId: 42 }
     ),
-    /articleId and actorId are required/
+    /positive safe integers/
   );
 });
 
+test("rejects invalid publication event identifiers", async () => {
+  const service = createPublicationEventService({
+    pool: { query: async () => ({ rows: [] }) }
+  });
+
+  const invalidCases = [
+    { articleId: -5, actorId: 20 },
+    { articleId: 42, actorId: -1 },
+    { articleId: "abc", actorId: 20 },
+    { articleId: 42, actorId: "abc" },
+    { articleId: 1.5, actorId: 20 },
+    {
+      articleId: 42,
+      actorId: Number.MAX_SAFE_INTEGER + 1
+    }
+  ];
+
+  for (const identifiers of invalidCases) {
+    await assert.rejects(
+      service.queuePublicationEvent(
+        {
+          query: async () => {
+            assert.fail("Invalid IDs reached database");
+          }
+        },
+        identifiers
+      ),
+      /positive safe integers/
+    );
+  }
+});
+
 test("publishes a claimed event and marks it published", async () => {
-  const pool = createFakePool({ claimedItem: sampleItem });
+  const pool = createFakePool({
+    claimedItem: sampleItem
+  });
+
   let sentPayload;
 
   const service = createPublicationEventService({
@@ -128,7 +173,9 @@ test("publishes a claimed event and marks it published", async () => {
 });
 
 test("reschedules an event after an SNS delivery failure", async () => {
-  const pool = createFakePool({ claimedItem: sampleItem });
+  const pool = createFakePool({
+    claimedItem: sampleItem
+  });
 
   const service = createPublicationEventService({
     pool,
@@ -154,6 +201,7 @@ test("reschedules an event after an SNS delivery failure", async () => {
 
 test("does not publish when no event is available", async () => {
   const pool = createFakePool();
+
   let called = false;
 
   const service = createPublicationEventService({
@@ -191,7 +239,9 @@ test("does not classify a database completion error as an SNS failure", async ()
       }
 
       if (/SET state = \$3/i.test(sql)) {
-        assert.fail("Database completion error was incorrectly treated as SNS failure");
+        assert.fail(
+          "Database completion error was incorrectly treated as SNS failure"
+        );
       }
 
       throw new Error("Unexpected SQL query");
@@ -200,7 +250,9 @@ test("does not classify a database completion error as an SNS failure", async ()
 
   const service = createPublicationEventService({
     pool,
-    publishToSns: async () => ({ MessageId: "sns-message-123" })
+    publishToSns: async () => ({
+      MessageId: "sns-message-123"
+    })
   });
 
   await assert.rejects(
@@ -229,7 +281,10 @@ test("recovers abandoned publisher claims", async () => {
   const recovered = await service.recoverAbandoned();
 
   assert.equal(recovered, 2);
-  assert.match(capturedSql, /locked_at < NOW\(\) - INTERVAL '5 minutes'/);
+  assert.match(
+    capturedSql,
+    /locked_at < NOW\(\) - INTERVAL '5 minutes'/
+  );
   assert.match(capturedSql, /state = 'pending'/);
 });
 
@@ -258,4 +313,69 @@ test("returns claim_lost when an SNS failure cannot update the claimed event", a
 
   assert.ok(update);
   assert.equal(update.values[0], sampleItem.event_id);
+});
+
+test("moves an event to failed after reaching the maximum attempts", async () => {
+  const pool = createFakePool({
+    claimedItem: {
+      ...sampleItem,
+      attempts: 4
+    }
+  });
+
+  const service = createPublicationEventService({
+    pool,
+    maxAttempts: 5,
+    publishToSns: async () => {
+      throw new Error("SNS permanently unavailable");
+    }
+  });
+
+  const result = await service.publishOne();
+
+  assert.deepEqual(result, {
+    status: "failed",
+    attempts: 5,
+    retryInSeconds: null
+  });
+
+  const update = pool.calls.find(call =>
+    /SET state = \$3/i.test(call.sql)
+  );
+
+  assert.ok(update);
+  assert.equal(update.values[2], "failed");
+  assert.equal(update.values[3], 80);
+  assert.equal(update.values[4], "SNS permanently unavailable");
+});
+
+test("increases retry delay using exponential backoff", async () => {
+  const pool = createFakePool({
+    claimedItem: {
+      ...sampleItem,
+      attempts: 1
+    }
+  });
+
+  const service = createPublicationEventService({
+    pool,
+    maxAttempts: 5,
+    publishToSns: async () => {
+      throw new Error("SNS temporarily unavailable");
+    }
+  });
+
+  const result = await service.publishOne();
+
+  assert.equal(result.status, "pending");
+  assert.equal(result.attempts, 2);
+  assert.equal(result.retryInSeconds, 10);
+
+  const update = pool.calls.find(call =>
+    /SET state = \$3/i.test(call.sql)
+  );
+
+  assert.ok(update);
+  assert.equal(update.values[2], "pending");
+  assert.equal(update.values[3], 10);
 });

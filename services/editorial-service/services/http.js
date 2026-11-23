@@ -2,7 +2,12 @@ class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
 function id(value) {
-  const n = Number(value);
+  // Accept only plain decimal digits (or an integer number). Rejects hex ("0x1"),
+  // exponents ("1e3"), signs, whitespace and any other text before it reaches SQL.
+  const plain =
+    (typeof value === "number" && Number.isInteger(value)) ||
+    (typeof value === "string" && /^[1-9][0-9]{0,15}$/.test(value));
+  const n = plain ? Number(value) : NaN;
   if (!Number.isSafeInteger(n) || n <= 0) throw new HttpError(400, "Invalid positive integer ID");
   return n;
 }
