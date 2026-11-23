@@ -1,0 +1,73 @@
+
+services:
+  editorial-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: supporthub-editorial-service:local
+    container_name: supporthub-editorial
+    ports:
+      - "3007:3002"
+    env_file:
+      - .env.local
+    environment:
+      PORT: "3002"
+      NODE_ENV: development
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://localhost:3002/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - floci-network
+
+  editorial-article-worker:
+    image: supporthub-editorial-service:local
+    container_name: supporthub-editorial-article-worker
+    command: ["node", "workers/articleEventConsumer.js"]
+    profiles:
+      - workers
+    env_file:
+      - .env.local
+    environment:
+      NODE_ENV: development
+      AWS_REGION: us-east-1
+      SQS_WAIT_TIME_SECONDS: "20"
+      SQS_VISIBILITY_TIMEOUT: "60"
+    restart: unless-stopped
+    depends_on:
+      editorial-service:
+        condition: service_healthy
+    networks:
+      - floci-network
+
+  editorial-publication-worker:
+    image: supporthub-editorial-service:local
+    container_name: supporthub-editorial-publication-worker
+    command: ["node", "workers/publicationEventPublisher.js"]
+    profiles:
+      - workers
+    env_file:
+      - .env.local
+    environment:
+      NODE_ENV: development
+      AWS_REGION: us-east-1
+    restart: unless-stopped
+    depends_on:
+      editorial-service:
+        condition: service_healthy
+    networks:
+      - floci-network
+
+networks:
+  floci-network:
+    external: true
+    name: floci_default

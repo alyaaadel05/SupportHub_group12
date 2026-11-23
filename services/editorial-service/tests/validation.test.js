@@ -16,6 +16,14 @@ test("validates positive numeric identifiers", () => {
   assert.throws(() => id("xyz"), /Invalid/);
 });
 
+test("rejects non-decimal and padded identifiers", () => {
+  assert.equal(id(42), 42);
+
+  for (const value of ["0x1", "1e3", " 1", "1 ", "+1", "01", "1.0", "", null, undefined, true, "1 OR 1=1"]) {
+    assert.throws(() => id(value), /Invalid/, String(value));
+  }
+});
+
 test("trims comments and limits length", () => {
   assert.equal(text("  looks good  ", 50, "Comment"), "looks good");
   assert.throws(

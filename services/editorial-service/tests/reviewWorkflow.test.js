@@ -17,6 +17,7 @@ const original = {
   failOperation: repository.failOperation,
   requireReconciliation: repository.requireReconciliation,
   claimReviewOperationForReconciliation: repository.claimReviewOperationForReconciliation,
+  getOperation: repository.getOperation,
   query: pool.query,
   connect: pool.connect
 };
@@ -38,7 +39,8 @@ function restore() {
     claimOperation: original.claimOperation,
     failOperation: original.failOperation,
     requireReconciliation: original.requireReconciliation,
-    claimReviewOperationForReconciliation: original.claimReviewOperationForReconciliation
+    claimReviewOperationForReconciliation: original.claimReviewOperationForReconciliation,
+    getOperation: original.getOperation
   });
 
   pool.query = original.query;
@@ -350,6 +352,7 @@ test("definite Article Service rejections fail the operation", async (t) => {
 
 test("reconcileReviewOperation finalizes a submission without repeating the remote transition", async t => {
   const operationId = "123e4567-e89b-42d3-a456-426614174000";
+  t.mock.method(repository, "getOperation", async () => null);
   const claimToken = "reconciliation-claim-1";
 
   t.mock.method(repository, "claimReviewOperationForReconciliation", async () => ({
@@ -400,6 +403,7 @@ test("reconcileReviewOperation finalizes a submission without repeating the remo
 
 test("reconcileReviewOperation finalizes an approval without repeating the remote transition", async t => {
   const operationId = "123e4567-e89b-42d3-a456-426614174001";
+  t.mock.method(repository, "getOperation", async () => null);
   const claimToken = "reconciliation-claim-2";
 
   t.mock.method(repository, "claimReviewOperationForReconciliation", async () => ({
@@ -467,6 +471,7 @@ test("reconcileReviewOperation finalizes an approval without repeating the remot
 
 test("reconcileReviewOperation leaves the operation unresolved when remote status does not match", async t => {
   const operationId = "123e4567-e89b-42d3-a456-426614174002";
+  t.mock.method(repository, "getOperation", async () => null);
   const claimToken = "reconciliation-claim-3";
 
   t.mock.method(repository, "claimReviewOperationForReconciliation", async () => ({
@@ -532,6 +537,7 @@ test("reconcileReviewOperation rejects an invalid operation ID", async t => {
 });
 
 test("reconcileReviewOperation rejects when the operation cannot be claimed", async t => {
+  t.mock.method(repository, "getOperation", async () => null);
   const claim = t.mock.method(
     repository,
     "claimReviewOperationForReconciliation",

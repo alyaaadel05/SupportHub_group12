@@ -9,19 +9,30 @@ function createPublicationEventService({
   maxAttempts = 5
 } = {}) {
 
-  async function queuePublicationEvent(client, { articleId, actorId }) {
-    if (!articleId || !actorId) {
-      throw new TypeError("articleId and actorId are required");
+  async function queuePublicationEvent(client, { articleId, actorId } = {}) {
+    const normalizedArticleId = Number(articleId);
+    const normalizedActorId = Number(actorId);
+
+    if (
+      !Number.isSafeInteger(normalizedArticleId) ||
+      normalizedArticleId <= 0 ||
+      !Number.isSafeInteger(normalizedActorId) ||
+      normalizedActorId <= 0
+    ) {
+      throw new TypeError(
+        "articleId and actorId must be positive safe integers"
+      );
     }
 
     const eventId = crypto.randomUUID();
+
     const payload = {
       eventId,
       eventType: "editorial.publication.published",
       occurredAt: new Date().toISOString(),
       data: {
-        articleId: Number(articleId),
-        publishedBy: Number(actorId)
+        articleId: normalizedArticleId,
+        publishedBy: normalizedActorId
       }
     };
 
@@ -30,7 +41,12 @@ function createPublicationEventService({
          (event_id, article_id, event_type, payload)
        VALUES ($1, $2, $3, $4::jsonb)
        RETURNING *`,
-      [eventId, articleId, payload.eventType, JSON.stringify(payload)]
+      [
+        eventId,
+        normalizedArticleId,
+        payload.eventType,
+        JSON.stringify(payload)
+      ]
     );
 
     return rows[0];
@@ -87,7 +103,6 @@ function createPublicationEventService({
     };
   }
 
-
   async function markFailed(item, error) {
     const attempts = Number(item.attempts) + 1;
     const permanentlyFailed = attempts >= maxAttempts;
@@ -98,8 +113,10 @@ function createPublicationEventService({
     );
 
     const nextState = permanentlyFailed ? "failed" : "pending";
-    const message = String(error?.message || "SNS publication failed")
-      .slice(0, 250);
+
+    const message = String(
+      error?.message || "SNS publication failed"
+    ).slice(0, 250);
 
     const result = await pool.query(
       `UPDATE editorial_publication_event_outbox
@@ -132,10 +149,11 @@ function createPublicationEventService({
     };
   }
 
-
   async function publishOne() {
     if (typeof publishToSns !== "function") {
-      throw new TypeError("publishToSns is required to publish events");
+      throw new TypeError(
+        "publishToSns is required to publish events"
+      );
     }
 
     const item = await claimNext();
@@ -172,13 +190,21 @@ function createPublicationEventService({
   }
 
   async function runBatch(limit = 20) {
-    const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 100));
+    const safeLimit = Math.max(
+      1,
+      Math.min(Number(limit) || 20, 100)
+    );
+
     const recovered = await recoverAbandoned();
     const results = [];
 
     for (let i = 0; i < safeLimit; i += 1) {
       const result = await publishOne();
-      if (result.status === "idle") break;
+
+      if (result.status === "idle") {
+        break;
+      }
+
       results.push(result);
     }
 
