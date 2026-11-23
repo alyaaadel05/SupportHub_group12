@@ -19,6 +19,11 @@ const app = express();
 
 const PORT = Number(process.env.PORT || 3003);
 const allowedOrigin = process.env.FRONTEND_ORIGIN;
+
+const allowedOrigins = allowedOrigin
+  .split(",")
+  .map(value => value.trim())
+  .filter(Boolean);
 const production = process.env.NODE_ENV === "production";
 
 if (!allowedOrigin) {
@@ -48,7 +53,12 @@ app.use(helmet());
 // ==========================================
 
 app.use(cors({
-  origin: allowedOrigin,
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(null, false);
+  },
   credentials: true,
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: [

@@ -1,0 +1,103 @@
+﻿SUPPORTHUB - ALYAA INDIVIDUAL AUDIT
+Recorded: 2026-11-22 02:04:24
+
+===== 1. DOCKER SAFETY =====
+Article DB: ep-falling-dream-b9en4011-pooler.c-7.eu-central-1.aws.neon.tech
+Identity DB: ep-falling-dream-b9en4011-pooler.c-7.eu-central-1.aws.neon.tech
+Outbox DB: ep-falling-dream-b9en4011-pooler.c-7.eu-central-1.aws.neon.tech
+Outbox Worker running: false
+PASS: Development and demo-only configuration.
+
+===== 2. HEALTH CHECKS =====
+Article: ok
+Identity: ok
+
+===== 3. DEVELOPMENT ARTICLE + OUTBOX =====
+Article ID: 21
+Article title: SupportHub DEV DEMO - Password Reset 3bac7db5
+Article status: in_review
+Article author ID: 6
+Outbox event ID: fe8d6799-7ac3-4787-bdd7-c73507800bd3
+Outbox event type: article.submitted
+Outbox event status: published
+Other unpublished events: 0
+PASS: Article 21 and SQS outbox evidence verified.
+
+===== 4. SQS READ-ONLY COUNTS =====
+supporthub-article-events : visible=18, in-flight=0, delayed=0
+supporthub-article-events-demo : visible=1, in-flight=0, delayed=0
+
+===== 5. FRESH READ-ONLY LOAD TEST =====
+Article: 100/100 passed; failed=0; average=318.24 ms; P95=603.26 ms; concurrency=20
+Identity: 100/100 passed; failed=0; average=311.93 ms; P95=578.53 ms; concurrency=20
+
+===== 6. GIT AND DELIVERY AUDIT =====
+Current branch:
+## feature/alyaa-identity-docker...origin/feature/alyaa-identity-docker [ahead 1]
+ M infra/floci/docker-compose.yml
+ M infra/iam/article-sqs-policy.json
+?? .vscode/
+?? article-backup-test.json
+?? infra/floci/docker-compose.demo-queue.yml
+?? infra/iam/article-demo-sqs-policy.json
+?? infra/iam/article-sqs-policy.json.backup-20261122-005054
+?? services/article-service/localEditorialPgTest.js
+?? services/article-service/testSchedulerEvent.js
+Latest commits:
+f536018 feat(frontend): add Editorial publication and outdated flag integration
+40662f0 fix(frontend): integrate Editorial review API and CSRF
+d015e4c fix(frontend): route Editorial reviews and CSRF through Cloudflare
+55586ec fix(frontend): integrate Nermeen analytics dashboard
+f6e5e84 fix(frontend): configure Turnstile site key
+Local branches and upstream tracking:
+  feature/alyaa-article          d4f5fd2 [origin/feature/alyaa-article] docs: document Alyaa Article Service API
+  feature/alyaa-article-category b0e0f35 [origin/feature/alyaa-article-category] Complete article and category management and editorial integration
+  feature/alyaa-article-fixes    afe5675 [origin/feature/alyaa-article-fixes] fix: restrict article editing and deletion to drafts
+  feature/alyaa-article-security 279bceb [origin/feature/alyaa-article-security] style: clean whitespace before Article PR merge
+* feature/alyaa-identity-docker  f536018 [origin/feature/alyaa-identity-docker: ahead 1] feat(frontend): add Editorial publication and outdated flag integration
+  feature/article-management     d0a2a2b [origin/feature/article-management] Implement SupportHub services and database integration
+  main                           1bc0371 [origin/main] Merge pull request #5 from alyaaadel05/feature/alyaa-article-security
+  restructure-backends           a734ffe [origin/restructure-backends] Alyaa Adel: Updated SupportHub structure, frontend and Article Management implementation
+  review/nermeen-pr6             78bdc9f [origin/feature/nermeen-search-analytics] Add input-validation tests
+
+===== 7. EXISTING EVIDENCE FILES =====
+evidence\.gitkeep
+evidence\aws-verification\01-s3-retrieval.png
+evidence\aws-verification\02-iam-denied.png
+evidence\aws-verification\03-sqs-delivery.png
+evidence\aws-verification\04-secrets-manager-iam.png
+evidence\aws-verification\05-secrets-config.png
+evidence\aws-verification\07-automatic-sqs-delivery.png
+evidence\aws-verification\10-real-article-sqs-event.png
+evidence\aws-verification\11-sqs-failure-recovery.png
+evidence\final-demo\01_ARCHITECTURE.md
+evidence\final-demo\02_DEMO_CHECKLIST.md
+evidence\final-demo\03_PERFORMANCE_RESULTS.md
+evidence\final-demo\04_ALYAA_CONTRIBUTION.md
+evidence\final-demo\05_ARTICLE_TEST_RESULTS.txt
+evidence\final-demo\06_IDENTITY_TEST_RESULTS.txt
+evidence\final-demo\07_SECURITY_DEMONSTRATION.md
+evidence\final-demo\08_SECURITY_CODE_CHECKS.csv
+evidence\final-demo\09_EVIDENCE_INDEX.md
+evidence\final-demo\10_EDITORIAL_HANDOFF.md
+evidence\final-demo\11_ARTICLE_ROUTE_INSPECTION.txt
+evidence\final-demo\12_SQS_IAM_SUMMARY.txt
+evidence\final-demo\test-evidence\article-deployment-verification.txt
+evidence\final-demo\test-evidence\article-identity-health-load.txt
+evidence\final-demo\test-evidence\article-signed-http-verification.txt
+evidence\final-demo\test-evidence\concurrent-article-sqs.txt
+evidence\final-demo\test-evidence\editorial-idempotency-postgres.txt
+evidence\final-demo\test-evidence\identity-real-login-load.txt
+evidence\final-demo\test-evidence\isolated-floci-recovery-v2.txt
+evidence\final-demo\test-evidence\real-outbox-retry.txt
+evidence\final-demo\test-evidence\retry-idempotency-tests.txt
+evidence\integration\ALYAA_TECHNICAL_EVIDENCE.md
+evidence\integration\article-deployment-verification.txt
+evidence\integration\article-identity-health-load.txt
+evidence\integration\article-signed-http-verification.txt
+evidence\integration\concurrent-article-sqs.txt
+
+===== AUDIT COMPLETED =====
+No SQS messages received, deleted or purged.
+No Git changes pushed or merged.
+No Production writes performed by this batch.
