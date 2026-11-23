@@ -9,6 +9,7 @@ const cors = require("cors");
 const session = require("express-session");
 const pgSession = require("connect-pg-simple")(session);
 const rateLimit = require("express-rate-limit");
+const { resolveRateLimitMax } = require("./config/rateLimit");
 const crypto = require("node:crypto");
 
 const pool = require("./db/pool");
@@ -116,7 +117,7 @@ app.use(
   "/api",
   rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: 300,
+    limit: resolveRateLimitMax(),
     standardHeaders: "draft-7",
     legacyHeaders: false
   })

@@ -5,6 +5,7 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const { rateLimit } = require("express-rate-limit");
+const { resolveRateLimitMax } = require("./config/rateLimit");
 
 const pool = require("./db/pool");
 
@@ -102,7 +103,7 @@ const sensitiveAuthLimiter = rateLimit({
 // CSRF retrieval, and logout.
 const sessionLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 300,
+  limit: resolveRateLimitMax(),
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: {

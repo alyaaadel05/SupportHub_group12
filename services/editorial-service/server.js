@@ -5,6 +5,7 @@ const helmet = require("helmet");
 const session = require("express-session");
 const PgSession = require("connect-pg-simple")(session);
 const rateLimit = require("express-rate-limit");
+const { resolveRateLimitMax } = require("./config/rateLimit");
 const pool = require("./db/pool");
 const { requireCronSecret } = require("./middleware/security");
 const notifications = require("./services/notificationService");
@@ -32,7 +33,7 @@ app.use(session({
     secure: process.env.NODE_ENV === "production" || process.env.COOKIE_SECURE === "true",
     sameSite: "lax", maxAge: 8 * 60 * 60 * 1000 }
 }));
-app.use("/api", rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: "draft-7", legacyHeaders: false }));
+app.use("/api", rateLimit({ windowMs: 15 * 60 * 1000, limit: resolveRateLimitMax(), standardHeaders: "draft-7", legacyHeaders: false }));
 app.get("/api/health", async (req,res,next) => {
   try { await pool.query("SELECT 1"); res.json({ status: "ok", service: "editorial-service" }); }
   catch (e) { next(e); }
