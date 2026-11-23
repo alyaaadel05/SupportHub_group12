@@ -1,4 +1,4 @@
-
+﻿
 services:
   floci:
     image: floci/floci:latest
@@ -40,6 +40,7 @@ services:
     env_file:
       - ../../services/article-service/.env
     environment:
+      SQS_QUEUE_URL: http://floci:4566/000000000000/supporthub-article-events-demo
       NODE_ENV: production
       AWS_ENDPOINT_URL: http://floci:4566
       AWS_SECRET_NAME: supporthub/article/runtime-config
@@ -64,3 +65,4 @@ services:
 
 volumes:
   floci-data:
+

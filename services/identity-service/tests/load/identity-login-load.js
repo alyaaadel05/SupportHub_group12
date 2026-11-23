@@ -2,7 +2,7 @@
 "use strict";
 
 const BASE = "http://127.0.0.1:3006";
-const ORIGIN = "http://127.0.0.1:8788";
+const ORIGIN = "http://127.0.0.1:8080";
 const EMAIL = "alyaa.supporthub.test@example.com";
 const COUNT = 10;
 

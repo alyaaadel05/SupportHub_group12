@@ -59,7 +59,10 @@ app.use(
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_ORIGIN,
+    origin: (process.env.FRONTEND_ORIGIN || "")
+      .split(",")
+      .map(value => value.trim())
+      .filter(Boolean),
     credentials: true,
     methods: [
       "GET",

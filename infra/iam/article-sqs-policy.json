@@ -1,14 +1,16 @@
-
 {
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "PublishArticleEvents",
-      "Effect": "Allow",
-      "Action": [
-        "sqs:SendMessage"
-      ],
-      "Resource": "arn:aws:sqs:us-east-1:000000000000:supporthub-article-events"
-    }
-  ]
+    "Version":  "2012-10-17",
+    "Statement":  [
+                      {
+                          "Effect":  "Allow",
+                          "Sid":  "PublishArticleEvents",
+                          "Resource":  [
+                                           "arn:aws:sqs:us-east-1:000000000000:supporthub-article-events",
+                                           "arn:aws:sqs:us-east-1:000000000000:supporthub-article-events-demo"
+                                       ],
+                          "Action":  [
+                                         "sqs:SendMessage"
+                                     ]
+                      }
+                  ]
 }
