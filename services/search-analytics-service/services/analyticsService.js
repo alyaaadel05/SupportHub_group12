@@ -4,7 +4,13 @@ const pool = require("../db/pool");
 // so one or two unhappy readers cannot flag an article on their own.
 const MIN_VOTES = Math.max(1, Number(process.env.POORLY_RATED_MIN_VOTES) || 3);
 
-async function overview() {
+// Short cache for the dashboard overview (11 aggregate queries). Off unless ANALYTICS_CACHE_MS > 0.
+// Concurrent requests while it recalculates share ONE calculation ("single flight"),
+// so many editors opening the dashboard at once cannot exhaust the database pool.
+const ANALYTICS_CACHE_MS = Math.max(0, Number(process.env.ANALYTICS_CACHE_MS) || 0);
+let cached = null, cachedAt = 0, computing = null;
+
+async function computeOverview() {
   const [searches, views, votes, clicks, popular, gaps, articles, sentiments, poorlyRated, daily, trending] = await Promise.all([
     pool.query(`SELECT COUNT(*)::int AS total,
       COUNT(*) FILTER (WHERE result_count > 0)::int AS successful,
@@ -27,7 +33,6 @@ async function overview() {
     pool.query(`SELECT sentiment_label AS label,COUNT(*)::int AS count FROM article_feedback
        WHERE sentiment_status='completed' AND sentiment_label IS NOT NULL
        GROUP BY sentiment_label ORDER BY count DESC LIMIT 10`),
-    // Poorly rated = at least MIN_VOTES votes AND more unhelpful than helpful. Worst first.
     pool.query(`SELECT a.article_id,a.title,COUNT(*)::int AS total_votes,
        COUNT(*) FILTER (WHERE h.helpful)::int AS helpful_votes,
        COUNT(*) FILTER (WHERE NOT h.helpful)::int AS unhelpful_votes,
@@ -37,35 +42,45 @@ async function overview() {
        HAVING COUNT(*) >= $1
           AND COUNT(*) FILTER (WHERE NOT h.helpful) > COUNT(*) FILTER (WHERE h.helpful)
        ORDER BY helpfulness_rate ASC, unhelpful_votes DESC LIMIT 10`, [MIN_VOTES]),
-    // Activity trend: searches, views and votes for each of the last 7 days (UTC).
-    // generate_series makes sure days with no activity still appear with 0.
     pool.query(`SELECT to_char(d,'YYYY-MM-DD') AS day,
        (SELECT COUNT(*)::int FROM search_query_logs WHERE searched_at >= d AND searched_at < d + INTERVAL '1 day') AS searches,
        (SELECT COUNT(*)::int FROM article_views WHERE viewed_at >= d AND viewed_at < d + INTERVAL '1 day') AS views,
        (SELECT COUNT(*)::int FROM helpfulness_votes WHERE created_at >= d AND created_at < d + INTERVAL '1 day') AS votes
        FROM generate_series(date_trunc('day', NOW()) - INTERVAL '6 days', date_trunc('day', NOW()), INTERVAL '1 day') AS d
        ORDER BY d`),
-    // Trending = most viewed in the last 7 days (all-time "most viewed" can hide what is popular now).
     pool.query(`SELECT a.article_id,a.title,COUNT(*)::int AS views_last_7_days
        FROM article_views v JOIN search_published_articles a ON a.article_id=v.article_id
        WHERE v.viewed_at >= NOW() - INTERVAL '7 days'
        GROUP BY a.article_id,a.title ORDER BY views_last_7_days DESC LIMIT 5`)
   ]);
-  const s=searches.rows[0],v=votes.rows[0];
-  const percent=(n,d)=> d ? Math.round(10000*n/d)/100 : 0;
+  const s = searches.rows[0], v = votes.rows[0];
+  const percent = (n, d) => (d ? Math.round(10000 * n / d) / 100 : 0);
   return {
-    totalSearches:s.total, successfulSearches:s.successful, zeroResultSearches:s.zero,
-    searchSuccessRate:percent(s.successful,s.total), zeroResultRate:percent(s.zero,s.total),
-    searchesWithClicks:clicks.rows[0].clicked_searches,
-    clickThroughRate:percent(clicks.rows[0].clicked_searches,s.total),
-    totalArticleViews:views.rows[0].total, totalVotes:v.total,
-    helpfulVotes:v.helpful, unhelpfulVotes:v.unhelpful,
-    helpfulnessRate:percent(v.helpful,v.total),
-    popularSearchTerms:popular.rows, knowledgeGaps:gaps.rows,
-    mostViewedArticles:articles.rows, sentimentBreakdown:sentiments.rows,
-    poorlyRatedArticles:poorlyRated.rows, poorlyRatedMinVotes:MIN_VOTES,
-    dailyActivity:daily.rows, trendingArticles:trending.rows
+    totalSearches: s.total, successfulSearches: s.successful, zeroResultSearches: s.zero,
+    searchSuccessRate: percent(s.successful, s.total), zeroResultRate: percent(s.zero, s.total),
+    searchesWithClicks: clicks.rows[0].clicked_searches,
+    clickThroughRate: percent(clicks.rows[0].clicked_searches, s.total),
+    totalArticleViews: views.rows[0].total, totalVotes: v.total,
+    helpfulVotes: v.helpful, unhelpfulVotes: v.unhelpful,
+    helpfulnessRate: percent(v.helpful, v.total),
+    popularSearchTerms: popular.rows, knowledgeGaps: gaps.rows,
+    mostViewedArticles: articles.rows, sentimentBreakdown: sentiments.rows,
+    poorlyRatedArticles: poorlyRated.rows, poorlyRatedMinVotes: MIN_VOTES,
+    dailyActivity: daily.rows, trendingArticles: trending.rows
   };
 }
 
-module.exports = { overview, MIN_VOTES };
+async function overview() {
+  if (!ANALYTICS_CACHE_MS) return computeOverview();
+  if (cached && Date.now() - cachedAt < ANALYTICS_CACHE_MS) return cached;
+  if (!computing) {
+    computing = computeOverview()
+      .then((result) => { cached = result; cachedAt = Date.now(); return result; })
+      .finally(() => { computing = null; });
+  }
+  return computing;
+}
+
+function clearOverviewCache() { cached = null; cachedAt = 0; }
+
+module.exports = { overview, computeOverview, clearOverviewCache, MIN_VOTES };

@@ -5,15 +5,37 @@ const { words, scoreArticle, parseSearch } = require("./ranking");
 const counters = require("./countersService");
 const metrics = require("./metricsService");
 
-async function search(input) {
-  const { q, page, pageSize, categoryId, terms } = parseSearch(input);
-  // Bounded on purpose (see PAGINATION-REVIEW.md). Category names are read-only
-  // reference data from the shared categories table.
-  const { rows } = await pool.query(`SELECT s.article_id, s.title, s.content, s.category_id,
+// Short in-memory cache of the published-article list (public data only).
+// Off unless SEARCH_CACHE_MS > 0. Cleared immediately on publish/unpublish (clearSearchCache).
+// Concurrent searches while it reloads share ONE database query ("single flight").
+const SEARCH_CACHE_MS = Math.max(0, Number(process.env.SEARCH_CACHE_MS) || 0);
+let cachedRows = null, cachedAt = 0, loading = null;
+
+function loadPublishedArticles() {
+  return pool.query(`SELECT s.article_id, s.title, s.content, s.category_id,
       c.name AS category_name, s.published_at
     FROM search_published_articles s LEFT JOIN categories c ON c.id = s.category_id
-    WHERE ($1::bigint IS NULL OR s.category_id = $1)
-    ORDER BY s.published_at DESC LIMIT 1000`, [categoryId]);
+    ORDER BY s.published_at DESC LIMIT 1000`).then(r => r.rows);
+}
+
+async function publishedArticles() {
+  if (!SEARCH_CACHE_MS) return loadPublishedArticles();
+  if (cachedRows && Date.now() - cachedAt < SEARCH_CACHE_MS) return cachedRows;
+  if (!loading) {
+    loading = loadPublishedArticles()
+      .then(rows => { cachedRows = rows; cachedAt = Date.now(); return rows; })
+      .finally(() => { loading = null; });
+  }
+  return loading;
+}
+
+function clearSearchCache() { cachedRows = null; cachedAt = 0; }
+
+async function search(input) {
+  const { q, page, pageSize, categoryId, terms } = parseSearch(input);
+  // Bounded on purpose (see PAGINATION-REVIEW.md): at most 1000 published articles are scored.
+  const all = await publishedArticles();
+  const rows = categoryId ? all.filter(r => Number(r.category_id) === Number(categoryId)) : all;
   const ranked = rows.map(row => ({ ...row, relevance: scoreArticle(row, terms) }))
     .filter(row => !terms.length || row.relevance > 0)
     .sort((a,b) => b.relevance - a.relevance ||
@@ -63,7 +85,8 @@ async function indexPublished(input) {
     title=EXCLUDED.title,content=EXCLUDED.content,category_id=EXCLUDED.category_id,
     published_at=EXCLUDED.published_at,updated_at=NOW()`,
     [articleId,article.title,article.content,article.category_id,article.published_at || new Date()]);
+  clearSearchCache(); // newly published article is searchable immediately
   return { articleId, indexed: true };
 }
 
-module.exports = { words, scoreArticle, parseSearch, search, getPublicArticle, logClick, indexPublished };
+module.exports = { words, scoreArticle, parseSearch, search, getPublicArticle, logClick, indexPublished, clearSearchCache };
