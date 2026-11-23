@@ -1,0 +1,20 @@
+==== SupportHub smoke test (isolated local stack) ====
+Total HTTP requests (incl. setup logins): 20
+Failed (non-2xx/3xx): 0.00%
+Latency avg 53 ms, p95 348 ms, max 376 ms
+Throughput: 17.8 req/s
+
+Service    Role     Requests   2xx   4xx   429   5xx  err   p95
+---------  -------  --------  ----  ----  ----  ----  ---  --------
+article    author          3     3     0     0     0    0     18 ms
+article    public          2     2     0     0     0    0     24 ms
+editorial  editor          2     2     0     0     0    0    104 ms
+editorial  public          1     1     0     0     0    0     15 ms
+identity   author          1     1     0     0     0    0      7 ms
+identity   editor          1     1     0     0     0    0      6 ms
+identity   public          2     2     0     0     0    0      5 ms
+search     editor          1     1     0     0     0    0     38 ms
+search     public          3     3     0     0     0    0     18 ms
+
+By service: identity=8 (p95 366 ms), article=5 (p95 23 ms), editorial=3 (p95 100 ms), search=4 (p95 35 ms)
+By role:    public=8 (p95 23 ms), author=4 (p95 18 ms), editor=4 (p95 98 ms)

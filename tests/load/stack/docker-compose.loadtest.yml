@@ -1,0 +1,168 @@
+# SupportHub Group 12 - ISOLATED LOCAL LOAD-TEST STACK
+#
+# Everything here is disposable and local:
+#   - Its own Compose project name, container names, images, networks and ports.
+#     It never reuses the team's existing containers (supporthub-article,
+#     supporthub-identity, supporthub-floci, ...), their .env files or volumes.
+#   - PostgreSQL data lives in tmpfs (RAM) and is destroyed when the stack stops.
+#   - The database is on an INTERNAL network: no internet access and no host port.
+#   - No service reads any .env file; every value below is synthetic.
+#   - AWS endpoints point at a dead end (127.0.0.1:1); no AWS, Floci, Neon,
+#     Vercel or Cloudflare is contacted. Turnstile is skipped in development.
+#
+# Usage (from this folder):
+#   $env:LOADTEST_CERTS_DIR = "<folder containing ca.crt, server.crt, server.key>"
+#   docker compose -p supporthub-loadtest -f docker-compose.loadtest.yml up -d --build
+#   docker compose -p supporthub-loadtest -f docker-compose.loadtest.yml down --volumes
+#
+# All secrets below are throwaway test values and are NOT used anywhere else.
+
+name: supporthub-loadtest
+
+x-test-secrets: &test-secrets
+  SESSION_SECRET: "loadtest-only-session-secret-not-used-anywhere-else-0001"
+  SERVICE_SHARED_SECRET: "loadtest-only-service-secret-not-used-anywhere-else-0002"
+  FRONTEND_ORIGIN: "http://127.0.0.1:18080"
+  COOKIE_SECURE: "false"
+  NODE_ENV: "development"
+  RATE_LIMIT_MAX: "100000"
+  NODE_EXTRA_CA_CERTS: "/certs/ca.crt"
+  # Dead-end AWS settings: any AWS call fails immediately and locally.
+  AWS_REGION: "us-east-1"
+  AWS_ENDPOINT_URL: "http://127.0.0.1:1"
+  SQS_ENDPOINT_URL: "http://127.0.0.1:1"
+  AWS_ACCESS_KEY_ID: "loadtest"
+  AWS_SECRET_ACCESS_KEY: "loadtest"
+
+x-service-defaults: &service-defaults
+  restart: "no"
+  mem_limit: 384m
+  cpus: 1.5
+  depends_on:
+    loadtest-db:
+      condition: service_healthy
+  volumes:
+    - ${LOADTEST_CERTS_DIR:?Set LOADTEST_CERTS_DIR to the test certificate folder}:/certs:ro
+  networks:
+    - loadtest-db-net
+    - loadtest-public
+
+services:
+  loadtest-db:
+    image: postgres:16-alpine
+    container_name: supporthub-loadtest-db
+    restart: "no"
+    mem_limit: 768m
+    cpus: 2
+    environment:
+      POSTGRES_USER: loadtest
+      POSTGRES_PASSWORD: loadtest-only-db-password
+      POSTGRES_DB: supporthub_loadtest
+    # Copy the test certificate so PostgreSQL accepts the key permissions,
+    # then start PostgreSQL with SSL enabled (the services require verified SSL).
+    entrypoint:
+      - sh
+      - -c
+      - >
+        cp /certs-src/server.crt /certs-src/server.key /tmp/ &&
+        chown postgres:postgres /tmp/server.crt /tmp/server.key &&
+        chmod 600 /tmp/server.key &&
+        exec docker-entrypoint.sh postgres
+        -c ssl=on
+        -c ssl_cert_file=/tmp/server.crt
+        -c ssl_key_file=/tmp/server.key
+        -c max_connections=200
+    tmpfs:
+      - /var/lib/postgresql/data:size=512m
+    volumes:
+      - ${LOADTEST_CERTS_DIR:?Set LOADTEST_CERTS_DIR to the test certificate folder}:/certs-src:ro
+      # Schema and seed run in file-name order on first start only.
+      - ./db/00-core-schema.sql:/docker-entrypoint-initdb.d/00-core-schema.sql:ro
+      - ../../../services/article-service/migrations/001_article_event_outbox.sql:/docker-entrypoint-initdb.d/10-article-001.sql:ro
+      - ../../../services/article-service/migrations/002_article_transition_idempotency.sql:/docker-entrypoint-initdb.d/11-article-002.sql:ro
+      - ../../../services/editorial-service/migrations/001_editorial.sql:/docker-entrypoint-initdb.d/20-editorial-001.sql:ro
+      - ../../../services/editorial-service/migrations/002_publication_outbox_claims.sql:/docker-entrypoint-initdb.d/21-editorial-002.sql:ro
+      - ../../../services/editorial-service/migrations/003_editorial_workflow_operations.sql:/docker-entrypoint-initdb.d/22-editorial-003.sql:ro
+      - ../../../services/editorial-service/migrations/004_editorial_publication_operation.sql:/docker-entrypoint-initdb.d/23-editorial-004.sql:ro
+      - ../../../services/editorial-service/migrations/005_editorial_event_inbox.sql:/docker-entrypoint-initdb.d/24-editorial-005.sql:ro
+      - ../../../services/editorial-service/migrations/006_editorial_publication_events.sql:/docker-entrypoint-initdb.d/25-editorial-006.sql:ro
+      - ../../../services/editorial-service/migrations/007_flag_integrity.sql:/docker-entrypoint-initdb.d/26-editorial-007.sql:ro
+      - ../../../services/search-analytics-service/migrations/001_search_analytics.sql:/docker-entrypoint-initdb.d/30-search-001.sql:ro
+      - ../../../services/search-analytics-service/migrations/002_search_indexes.sql:/docker-entrypoint-initdb.d/31-search-002.sql:ro
+      - ./db/90-seed.sql:/docker-entrypoint-initdb.d/90-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loadtest -d supporthub_loadtest"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+    networks:
+      - loadtest-db-net
+    # No "ports:" - the database is never exposed to the host or internet.
+
+  loadtest-identity:
+    <<: *service-defaults
+    build: ../../../services/identity-service
+    image: supporthub-loadtest-identity:local
+    container_name: supporthub-loadtest-identity
+    environment:
+      <<: *test-secrets
+      PORT: "3003"
+      DATABASE_URL: "postgresql://loadtest:loadtest-only-db-password@loadtest-db:5432/supporthub_loadtest"
+      # TURNSTILE_SECRET_KEY intentionally unset: development mode skips
+      # Turnstile without calling Cloudflare. Login limit stays fixed at 30.
+    ports:
+      - "127.0.0.1:13003:3003"
+
+  loadtest-article:
+    <<: *service-defaults
+    build: ../../../services/article-service
+    image: supporthub-loadtest-article:local
+    container_name: supporthub-loadtest-article
+    environment:
+      <<: *test-secrets
+      PORT: "3001"
+      DATABASE_URL: "postgresql://loadtest:loadtest-only-db-password@loadtest-db:5432/supporthub_loadtest"
+      # No SQS_QUEUE_URL / AWS_S3_BUCKET / AWS_SECRET_NAME: the outbox worker is
+      # not started and backup/export routes are not part of the load test.
+    ports:
+      - "127.0.0.1:13001:3001"
+
+  loadtest-editorial:
+    <<: *service-defaults
+    build: ../../../services/editorial-service
+    image: supporthub-loadtest-editorial:local
+    container_name: supporthub-loadtest-editorial
+    environment:
+      <<: *test-secrets
+      PORT: "3002"
+      DATABASE_URL: "postgresql://loadtest:loadtest-only-db-password@loadtest-db:5432/supporthub_loadtest"
+      ARTICLE_SERVICE_URL: "http://loadtest-article:3001"
+      SEARCH_SERVICE_URL: "http://loadtest-search:3004"
+      CRON_SECRET: "loadtest-only-cron-secret-not-used-anywhere-else-0003"
+      # The SQS consumer and SNS publisher workers are not started.
+    ports:
+      - "127.0.0.1:13002:3002"
+
+  loadtest-search:
+    <<: *service-defaults
+    build: ../../../services/search-analytics-service
+    image: supporthub-loadtest-search:local
+    container_name: supporthub-loadtest-search
+    environment:
+      <<: *test-secrets
+      PORT: "3004"
+      DATABASE_URL: "postgresql://loadtest:loadtest-only-db-password@loadtest-db:5432/supporthub_loadtest"
+      ARTICLE_SERVICE_URL: "http://loadtest-article:3001"
+      # DYNAMODB_COUNTERS_TABLE, CLOUDWATCH_NAMESPACE, S3 bucket, HF_TOKEN and
+      # TURNSTILE_SECRET_KEY intentionally unset: those features are skipped.
+    ports:
+      - "127.0.0.1:13004:3004"
+
+networks:
+  # Internal: containers on it cannot reach the internet or the host network.
+  loadtest-db-net:
+    name: supporthub-loadtest-db-net
+    internal: true
+  # Only used to publish the four service ports on 127.0.0.1.
+  loadtest-public:
+    name: supporthub-loadtest-public
