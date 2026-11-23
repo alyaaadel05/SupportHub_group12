@@ -45,3 +45,12 @@ Vote helpful                   -> {"articleId":21,"helpful":true,"saved":true}  
 Change vote to unhelpful       -> {"articleId":21,"helpful":false,"saved":true}  (HTTP 200)
 Vote rows for this article     -> [{"user_id":"10","helpful":false}]
 Analytics (most viewed + votes)-> {"article_id":"21","title":"SupportHub DEV DEMO - Password Reset 3bac7db5","views":2,"helpful_votes":0,"unhelpful_votes":1} | totalVotes 2
+
+=== Phase: unpublished — article 21, keyword "3bac7db5" — 2026-11-23T01:25:53Z ===
+Keyword search ?q=3bac7db5        -> FOUND
+Category search ?category=6   -> FOUND
+Search index row               -> [{"article_id":"21","title":"SupportHub DEV DEMO - Password Reset 3bac7db5","updated_at":"2026-11-23T00:53:15.987Z"}]
+Open article                   -> HTTP 200
+New vote after unpublishing    -> {"articleId":21,"helpful":true,"saved":true}  (HTTP 200)
+--- Records after unpublishing (should be kept, not deleted) ---
+views: 3 | votes: [{"user_id":"10","helpful":true}]
