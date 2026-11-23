@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS search_published_articles (
  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS search_articles_category_idx ON search_published_articles(category_id);
-CREATE TABLE IF NOT EXISTS search_logs (
+CREATE TABLE IF NOT EXISTS search_query_logs (
  search_id BIGSERIAL PRIMARY KEY,
  query_text VARCHAR(100) NOT NULL,
  result_count INTEGER NOT NULL CHECK(result_count >= 0),
@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS search_logs (
 );
 CREATE TABLE IF NOT EXISTS search_result_clicks (
  click_id BIGSERIAL PRIMARY KEY,
- search_id BIGINT NOT NULL REFERENCES search_logs(search_id) ON DELETE CASCADE,
+ search_id BIGINT NOT NULL REFERENCES search_query_logs(search_id) ON DELETE CASCADE,
  article_id BIGINT NOT NULL,
  clicked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

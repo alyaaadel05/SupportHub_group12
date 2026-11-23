@@ -1,0 +1,10 @@
+== SQL injection tests
+GET /api/public/articles?q=%27%3B%20DROP%20TABLE%20search_query_logs%3B%20--
+{"results":[],"total":0,"page":1,"pageSize":10,"searchId":"16784"}  -> HTTP 200
+
+GET /api/public/articles?categoryID=1%20OR%201%3D1
+{"error":"Invalid ID"}  -> HTTP 400
+
+GET /api/public/articles/1%3BDROP%20TABLE%20articles
+{"error":"Invalid ID"}  -> HTTP 400
+
