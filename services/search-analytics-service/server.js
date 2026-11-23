@@ -183,6 +183,23 @@ app.use((req, res) => {
 // --------------------------------------
 
 app.use((error, req, res, next) => {
+  // A response was already sent: never try to send a second one
+  // (prevents ERR_HTTP_HEADERS_SENT under heavy load).
+  if (res.headersSent) {
+    return next(error);
+  }
+
+  // Database pool is full under heavy load: tell the client to retry
+  // instead of returning a generic 500.
+  if (/timeout exceeded when trying to connect|Connection terminated due to connection timeout/i
+      .test(error.message || "")) {
+    console.error("Search & Analytics busy:", error.message);
+    res.set("Retry-After", "5");
+    return res.status(503).json({
+      error: "Service busy, please retry"
+    });
+  }
+
   // Upstream / dependency failures (Article Service, Turnstile, S3 config):
   // return the safe message with 502/503 so callers know the real cause.
   if (error.status === 502 || error.status === 503) {
