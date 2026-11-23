@@ -38,6 +38,7 @@ app.get("/api/health", async (req,res,next) => {
   catch (e) { next(e); }
 });
 app.use("/api", require("./routes/reviewRoutes"));
+app.use("/api", require("./routes/csrfRoutes"));
 app.use("/api", require("./routes/publicationRoutes"));
 app.use("/api", require("./routes/flagRoutes"));
 // Scheduled retry endpoint, secured with its own secret. Configure a scheduler separately.
