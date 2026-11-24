@@ -8,6 +8,9 @@ const {
   requireReviewer,
   requireBrowserWrite
 } = require("../middleware/security");
+const { createLimiter } = require("../config/rateLimitProfiles");
+
+const publishLimit = createLimiter("editorial-publication", 60);
 
 // Editors and administrators can view published articles.
 router.get(
@@ -20,6 +23,7 @@ router.get(
 router.patch(
   "/articles/:id/publication",
   requireReviewer,
+  publishLimit,
   requireBrowserWrite,
   controller.publish
 );

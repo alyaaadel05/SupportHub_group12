@@ -15,4 +15,4 @@ EXPOSE 3002
 
 USER node
 
-CMD ["node", "server.js"]
+CMD ["node", "start.js"]

@@ -74,3 +74,15 @@ The Article Service accesses Neon PostgreSQL through its configured database con
 Editorial and Search/Analytics services are owned by other team members.
 
 Their service implementations should be integrated through reviewed Git feature branches and pull requests.
+
+## Integrated stack (all services, final submission)
+
+`docker-compose.supporthub.yml` runs Floci, PostgreSQL, Identity, Article, Editorial,
+Search & Analytics, their workers and the frontend proxy. It coexists with the
+containers above (names `supporthub-int-*`, ports 3105-3108 and 8088) and reuses an
+existing `supporthub-floci` container. Start it with:
+
+    bash infra/floci/setup-supporthub.sh
+
+Then verify with `bash infra/floci/verify-iam.sh` and `bash infra/floci/verify-aws-usage.sh`.
+Full guide: `docs/final/03-local-windows-runbook.md`.

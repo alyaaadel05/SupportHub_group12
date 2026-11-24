@@ -8,6 +8,9 @@ const {
   requireCsrf,
   assertOrigin
 } = require("../middleware/security");
+const { createLimiter } = require("../config/rateLimitProfiles");
+
+const categoryWriteLimit = createLimiter("category-write", 30);
 
 // Security checks for requests that modify categories.
 const secure = [
@@ -29,6 +32,7 @@ router.get(
 router.post(
   "/categories",
   authorAccess,
+  categoryWriteLimit,
   ...secure,
   controller.create
 );
@@ -37,6 +41,7 @@ router.post(
 router.patch(
   "/categories/:id",
   authorAccess,
+  categoryWriteLimit,
   ...secure,
   controller.update
 );
@@ -45,6 +50,7 @@ router.patch(
 router.delete(
   "/categories/:id",
   authorAccess,
+  categoryWriteLimit,
   ...secure,
   controller.remove
 );

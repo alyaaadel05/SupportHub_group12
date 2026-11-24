@@ -33,7 +33,7 @@ test("invalid values fall back to 300 and never disable limiting", () => {
 
 test("server.js has exactly one general /api limiter using the helper", () => {
   assert.equal((serverSource.match(/rateLimit\(/g) || []).length, 1);
-  assert.match(serverSource, /limit: resolveRateLimitMax\(\)/);
+  assert.match(serverSource, /limit: generalLimit\(\)/);
   assert.doesNotMatch(serverSource, /limit:\s*300\b/);
   assert.match(serverSource, /windowMs: 15 \* 60 \* 1000/);
 });

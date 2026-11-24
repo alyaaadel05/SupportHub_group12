@@ -5,32 +5,35 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const ROOT = __dirname;
-const PORT = 8080;
+const PORT = Number(process.env.FRONTEND_PORT || 8080);
 
+// Backend URLs come from the environment so no machine-specific address
+// (for example a teammate's temporary Tailscale IP) is hard-coded.
+// Defaults match the team's existing local ports (identity 3006, article
+// 3005, editorial 3007 in Docker; search 3004 run with node).
 const targets = {
-  identity: "http://127.0.0.1:3006",
-  article: "http://127.0.0.1:3005",
-  editorial: "http://100.69.198.126:3002",
-  search: "http://100.69.7.28:3004"
+  identity: process.env.IDENTITY_URL || "http://127.0.0.1:3006",
+  article: process.env.ARTICLE_URL || "http://127.0.0.1:3005",
+  editorial: process.env.EDITORIAL_URL || "http://127.0.0.1:3007",
+  search: process.env.SEARCH_URL || "http://127.0.0.1:3004"
 };
 
-function chooseTarget(pathname) {
-  if (pathname === "/api/csrf-token") {
-    return {
-      target: targets.identity,
-      path: "/api/auth/csrf"
-    };
-  }
-
-  if (pathname.startsWith("/api/auth/")) {
+// Same routing table as functions/api/[[path]].js (Cloudflare Pages).
+function chooseTarget(pathname, method = "GET") {
+  if (pathname === "/api/auth" || pathname.startsWith("/api/auth/")) {
     return { target: targets.identity };
   }
 
   if (
+    pathname === "/api/csrf-token" ||
     pathname === "/api/reviews" ||
     pathname.startsWith("/api/reviews/") ||
     pathname.startsWith("/api/editorial/") ||
-    /^\/api\/articles\/\d+\/(reviews|submissions)$/.test(pathname)
+    /^\/api\/flags\/\d+$/.test(pathname) ||
+    /^\/api\/review-operations\//.test(pathname) ||
+    (method === "POST" && /^\/api\/articles\/\d+\/(reviews|submissions|flags)$/.test(pathname)) ||
+    (method === "PATCH" && /^\/api\/articles\/\d+\/publication$/.test(pathname)) ||
+    (method === "GET" && /^\/api\/articles\/\d+\/history$/.test(pathname))
   ) {
     return { target: targets.editorial };
   }
@@ -47,7 +50,7 @@ function chooseTarget(pathname) {
 }
 
 function proxyRequest(req, res, pathname, search) {
-  const route = chooseTarget(pathname);
+  const route = chooseTarget(pathname, req.method);
 
   const upstream = new URL(route.target);
   const requestPath = (route.path || pathname) + search;
@@ -90,6 +93,29 @@ function proxyRequest(req, res, pathname, search) {
 
   req.pipe(upstreamRequest);
 }
+
+// Apply the same static-page headers as Cloudflare Pages (_headers, "/*" block)
+// so the Content-Security-Policy is exercised during local testing too.
+function loadPagesHeaders() {
+  try {
+    const lines = fs.readFileSync(path.join(ROOT, "_headers"), "utf8").split(/\r?\n/);
+    const headers = {};
+    let inAll = false;
+    for (const line of lines) {
+      if (!line.trim() || line.trim().startsWith("#")) continue;
+      if (!/^\s/.test(line)) { inAll = line.trim() === "/*"; continue; }
+      if (inAll) {
+        const index = line.indexOf(":");
+        if (index > 0) headers[line.slice(0, index).trim()] = line.slice(index + 1).trim();
+      }
+    }
+    return headers;
+  } catch {
+    return {};
+  }
+}
+
+const pagesHeaders = loadPagesHeaders();
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -158,6 +184,7 @@ const server = http.createServer((req, res) => {
     }
 
     res.writeHead(200, {
+      ...pagesHeaders,
       "Content-Type":
         mimeTypes[path.extname(absolutePath).toLowerCase()] ||
         "application/octet-stream",

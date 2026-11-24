@@ -7,6 +7,9 @@ const {
   requireReviewer,
   requireBrowserWrite
 } = require("../middleware/security");
+const { createLimiter } = require("../config/rateLimitProfiles");
+
+const flagLimit = createLimiter("editorial-flags", 60);
 
 router.get(
   "/editorial/flags",
@@ -17,6 +20,7 @@ router.get(
 router.post(
   "/articles/:id/flags",
   requireReviewer,
+  flagLimit,
   requireBrowserWrite,
   controller.create
 );
@@ -24,6 +28,7 @@ router.post(
 router.patch(
   "/flags/:id",
   requireReviewer,
+  flagLimit,
   requireBrowserWrite,
   controller.resolve
 );

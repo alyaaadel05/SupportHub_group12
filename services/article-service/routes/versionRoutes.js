@@ -8,6 +8,10 @@ const {
   requireCsrf,
   assertOrigin
 } = require("../middleware/security");
+const { createLimiter } = require("../config/rateLimitProfiles");
+
+const restoreLimit = createLimiter("version-restore", 30);
+const backupLimit = createLimiter("version-backup", 20);
 
 // Security for requests that modify data
 const secure = [
@@ -43,6 +47,7 @@ router.get(
 router.post(
   "/articles/:id/restore",
   authorAccess,
+  restoreLimit,
   ...secure,
   c.restore
 );
@@ -52,6 +57,7 @@ router.post(
 router.post(
   "/articles/:id/versions/:versionId/export",
   authorAccess,
+  backupLimit,
   ...secure,
   c.exportBackup
 );

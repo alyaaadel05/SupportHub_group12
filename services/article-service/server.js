@@ -9,7 +9,8 @@ const cors = require("cors");
 const session = require("express-session");
 const pgSession = require("connect-pg-simple")(session);
 const rateLimit = require("express-rate-limit");
-const { resolveRateLimitMax } = require("./config/rateLimit");
+const { generalLimit } = require("./config/rateLimitProfiles");
+const { securityEventLogger } = require("./middleware/securityEvents");
 const crypto = require("node:crypto");
 
 const pool = require("./db/pool");
@@ -48,6 +49,9 @@ app.set("trust proxy", 1);
 // -----------------------------------------
 
 app.use(helmet());
+
+// Structured 401/403 security-event log lines (no secrets, no bodies).
+app.use(securityEventLogger);
 
 app.use(
   express.json({
@@ -117,7 +121,7 @@ app.use(
   "/api",
   rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: resolveRateLimitMax(),
+    limit: generalLimit(),
     standardHeaders: "draft-7",
     legacyHeaders: false
   })
@@ -351,6 +355,14 @@ app.use((err, req, res, next) => {
   ) {
     return res.status(400).json({
       error: "Invalid JSON"
+    });
+  }
+
+  // Upstream provider failure (for example the Stack Exchange API or an
+  // invalid stored S3 backup): keep 502 and the safe message from the service.
+  if (err.status === 502) {
+    return res.status(502).json({
+      error: err.message || "Upstream service unavailable"
     });
   }
 

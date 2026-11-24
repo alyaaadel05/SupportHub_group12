@@ -1,0 +1,52 @@
+SupportHub IAM permission tests - 2026-11-24T02:07:50Z
+Target: Floci 2.5.0 with FLOCI_SERVICES_IAM_ENFORCEMENT_ENABLED=true
+Each line uses the component's OWN access key. Secret values are never printed.
+
+--- article (IAM user supporthub-article-service) ---
+PASS | expected ALLOW | actual ALLOW | S3 PutObject own prefix articles/ (version backup)
+PASS | expected ALLOW | actual ALLOW | S3 GetObject own prefix articles/ (backup retrieval)
+PASS | expected DENY  | actual DENY  | S3 DeleteObject (backups are append-only)
+PASS | expected DENY  | actual DENY  | S3 PutObject outside articles/ prefix
+PASS | expected DENY  | actual DENY  | S3 PutObject into Search exports bucket (other component)
+PASS | expected DENY  | actual DENY  | S3 ListAllMyBuckets
+PASS | expected ALLOW | actual ALLOW | SQS SendMessage to supporthub-article-events (outbox publish)
+PASS | expected DENY  | actual DENY  | SQS ReceiveMessage (consumer action belongs to Editorial)
+PASS | expected ALLOW | actual ALLOW | Secrets GetSecretValue supporthub/article/runtime-config
+PASS | expected ALLOW | actual ALLOW | Secrets GetSecretValue supporthub/shared/session
+PASS | expected DENY  | actual DENY  | Secrets GetSecretValue supporthub/editorial/runtime (other component)
+PASS | expected DENY  | actual DENY  | Secrets GetSecretValue supporthub/search/runtime (other component)
+PASS | expected DENY  | actual DENY  | DynamoDB Scan Search counters (other component)
+PASS | expected DENY  | actual DENY  | SNS Publish to Editorial topic (other component)
+
+--- editorial (IAM user supporthub-editorial-service) ---
+PASS | expected ALLOW | actual ALLOW | SQS ReceiveMessage from supporthub-article-events (consumer)
+PASS | expected DENY  | actual DENY  | SQS SendMessage to article events (only Article publishes)
+PASS | expected DENY  | actual DENY  | SQS PurgeQueue
+PASS | expected ALLOW | actual ALLOW | SNS Publish to supporthub-editorial-publication-events
+PASS | expected DENY  | actual DENY  | SNS CreateTopic
+PASS | expected ALLOW | actual ALLOW | Secrets GetSecretValue supporthub/editorial/runtime
+PASS | expected ALLOW | actual ALLOW | Secrets GetSecretValue supporthub/shared/service-hmac
+PASS | expected DENY  | actual DENY  | Secrets GetSecretValue supporthub/article/runtime-config (other component)
+PASS | expected DENY  | actual DENY  | Secrets GetSecretValue supporthub/search/runtime (other component)
+PASS | expected DENY  | actual DENY  | S3 GetObject Article backups (other component)
+PASS | expected DENY  | actual DENY  | Lambda UpdateFunctionCode (deployment is an admin task)
+
+--- search (IAM user search-analytics-service) ---
+PASS | expected ALLOW | actual ALLOW | DynamoDB Scan own counters table
+PASS | expected ALLOW | actual ALLOW | DynamoDB UpdateItem own counters table
+PASS | expected DENY  | actual DENY  | DynamoDB DeleteTable
+PASS | expected ALLOW | actual ALLOW | CloudWatch PutMetricData SupportHub/Search
+PASS | expected ALLOW | actual ALLOW | S3 PutObject exports/ in own bucket
+PASS | expected DENY  | actual DENY  | S3 GetObject Article backups (other component)
+PASS | expected ALLOW | actual ALLOW | Secrets GetSecretValue supporthub/search/runtime
+PASS | expected DENY  | actual DENY  | Secrets GetSecretValue supporthub/editorial/runtime (other component)
+PASS | expected DENY  | actual DENY  | SQS ReceiveMessage article events (other component)
+
+--- identity (IAM user supporthub-identity-service) ---
+PASS | expected ALLOW | actual ALLOW | Secrets GetSecretValue supporthub/shared/session
+PASS | expected ALLOW | actual ALLOW | Secrets GetSecretValue supporthub/identity/runtime
+PASS | expected DENY  | actual DENY  | Secrets GetSecretValue supporthub/shared/service-hmac (internal services only)
+PASS | expected DENY  | actual DENY  | S3 ListAllMyBuckets
+PASS | expected DENY  | actual DENY  | IAM ListUsers
+
+Total: 39 passed, 0 failed

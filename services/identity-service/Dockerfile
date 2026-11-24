@@ -14,5 +14,7 @@ ENV PORT=3003
 
 EXPOSE 3003
 
-CMD ["npm", "start"]
+USER node
+
+CMD ["node", "start.js"]
 
