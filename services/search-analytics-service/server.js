@@ -11,6 +11,8 @@ const rateLimit = require("express-rate-limit");
 const pool = require("./db/pool");
 const { requireLogin, noStore } = require("./middleware/security");
 const { requestMetrics } = require("./middleware/metrics");
+const { generalLimit } = require("./config/rateLimitProfiles");
+const { securityEventLogger } = require("./middleware/securityEvents");
 
 const searchRoutes = require("./routes/searchRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
@@ -46,6 +48,7 @@ app.use(requestMetrics);
 // --------------------------------------
 
 app.use(helmet());
+app.use(securityEventLogger);
 
 app.use(cors({
   origin: process.env.FRONTEND_ORIGIN,
@@ -98,7 +101,8 @@ app.use(session({
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-   limit: Number(process.env.RATE_LIMIT_MAX || 300),
+  // Validated: invalid RATE_LIMIT_MAX values fall back to 300.
+  limit: generalLimit(),
   standardHeaders: "draft-7",
   legacyHeaders: false
 });

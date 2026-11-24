@@ -19,4 +19,4 @@ EXPOSE 3004
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD wget -qO- http://localhost:${PORT:-3004}/api/health || exit 1
 
-CMD ["node", "server.js"]
+CMD ["node", "start.js"]

@@ -1,0 +1,80 @@
+SupportHub AWS usage evidence - 2026-11-24T02:18:42Z
+Floci: 2.5.0
+
+=== ALYAA - Article & Category Management (IAM user supporthub-article-service)
+[S3] supporthub-article-backups objects (version backups written by POST /versions/:id/export):
+    articles/1/versions/2.json	464
+    articles/3/versions/5.json	464
+    articles/5/versions/8.json	464
+    articles/iam-test/probe.json	32
+[SQS] supporthub-article-events (outbox publisher) attributes:
+    ATTRIBUTES	0	{"deadLetterTargetArn":"arn:aws:sqs:us-east-1:000000000000:supporthub-article-events-dlq","maxReceiveCount":"5"}
+[SQS] outbox rows published to SQS (database):
+    published|116
+[Secrets Manager] secrets loaded by the Article API at start-up (names only):
+    [secrets] supporthub/article/runtime-config: loaded 0 key(s)
+    [secrets] supporthub/shared/database: loaded 1 key(s) (DATABASE_URL)
+    [secrets] supporthub/shared/service-hmac: loaded 1 key(s) (SERVICE_SHARED_SECRET)
+    [secrets] supporthub/shared/session: loaded 1 key(s) (SESSION_SECRET)
+[IAM] inline policies:
+    POLICYNAMES	SupportHubArticleS3Policy
+    POLICYNAMES	SupportHubArticleSQSPublisher
+    POLICYNAMES	SupportHubArticleSecrets
+
+=== SALMA - Editorial Workflow & Publication (IAM user supporthub-editorial-service)
+[SQS] events consumed into editorial_event_inbox (database):
+    article.submitted|116
+[SNS] supporthub-editorial-publication-events subscriptions:
+    lambda	arn:aws:lambda:us-east-1:000000000000:function:supporthub-editorial-publication-outcome
+[SNS] publication events published (database outbox):
+    published|47
+[Lambda] supporthub-editorial-publication-outcome:
+    nodejs22.x	index.handler	Active	arn:aws:iam::000000000000:role/supporthub-editorial-publication-outcome-role
+[Lambda] receipts written by the Lambda for SNS events (database):
+    47
+[Secrets Manager] secrets loaded by the Editorial API at start-up (names only):
+    [secrets] supporthub/editorial/runtime: loaded 1 key(s) (CRON_SECRET)
+    [secrets] supporthub/shared/database: loaded 1 key(s) (DATABASE_URL)
+    [secrets] supporthub/shared/service-hmac: loaded 1 key(s) (SERVICE_SHARED_SECRET)
+    [secrets] supporthub/shared/session: loaded 1 key(s) (SESSION_SECRET)
+[IAM] inline policies:
+    POLICYNAMES	SupportHubEditorialSNSPublisher
+    POLICYNAMES	SupportHubEditorialSQSConsumer
+    POLICYNAMES	SupportHubEditorialSecrets
+
+=== NERMEEN - Search, Feedback & Analytics (IAM user search-analytics-service)
+[DynamoDB] supporthub-search-counters items (live counters):
+    items: 25
+    sample keys: ARTICLE#1	ARTICLE#10	ARTICLE#3	ARTICLE#5	ARTICLE#7
+    sample keys: None
+[CloudWatch] metrics in namespace SupportHub/Search:
+    ClientErrors IamProbe LatencyMs RateLimited Requests Searches ServerErrors ZeroResultSearches 
+[S3] supporthub-search-analytics-exports objects (CSV exports):
+    exports/analytics-20261124T021022Z.csv	688
+    exports/analytics-20261124T021051Z.csv	811
+    exports/analytics-20261124T021327Z.csv	981
+    exports/iam-probe.csv	32
+[Secrets Manager] secrets loaded by the Search API at start-up (names only):
+    [secrets] supporthub/search/runtime: loaded 1 key(s) (TURNSTILE_SECRET_KEY)
+    [secrets] supporthub/shared/database: loaded 1 key(s) (DATABASE_URL)
+    [secrets] supporthub/shared/service-hmac: loaded 1 key(s) (SERVICE_SHARED_SECRET)
+    [secrets] supporthub/shared/session: loaded 1 key(s) (SESSION_SECRET)
+[IAM] inline policies:
+    POLICYNAMES	SearchAnalyticsLeastPrivilege
+    POLICYNAMES	SupportHubSearchSecrets
+
+=== SHARED - Identity Service (Alyaa) (IAM user supporthub-identity-service)
+[Secrets Manager] secrets loaded by Identity at start-up (names only):
+    [secrets] supporthub/identity/runtime: loaded 1 key(s) (TURNSTILE_SECRET_KEY)
+    [secrets] supporthub/shared/database: loaded 1 key(s) (DATABASE_URL)
+    [secrets] supporthub/shared/session: loaded 1 key(s) (SESSION_SECRET)
+[Secrets Manager] all SupportHub secrets (names only):
+    supporthub/article/runtime-config
+    supporthub/editorial/runtime
+    supporthub/identity/runtime
+    supporthub/search/runtime
+    supporthub/shared/database
+    supporthub/shared/service-hmac
+    supporthub/shared/session
+
+Saved evidence/final/aws/aws-usage-20261124T021842Z.txt

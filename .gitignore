@@ -22,3 +22,6 @@ coverage/
 !.env.example
 *.backup-*
 *.before-proxy-*
+
+# Floci setup output: access keys, certificates, demo passwords (never commit)
+infra/floci/.generated/
