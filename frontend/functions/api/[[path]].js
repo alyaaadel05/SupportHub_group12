@@ -16,7 +16,16 @@ function targetService(path, method) {
     return "identity";
   }
 
-  if (/^\/(?:csrf-token|reviews)(?:\/|$)/.test(route)) {
+  if (/^\/(?:csrf-token|reviews|review-operations)(?:\/|$)/.test(route)) {
+    return "editorial";
+  }
+  if (/^\/flags\/\d+$/.test(route)) {
+    return "editorial";
+  }
+  if (method === "GET" && /^\/articles\/\d+\/history$/.test(route)) {
+    return "editorial";
+  }
+  if (method === "POST" && /^\/articles\/\d+\/submissions$/.test(route)) {
     return "editorial";
   }
   if (method === "POST" && /^\/articles\/\d+\/reviews$/.test(route)) {

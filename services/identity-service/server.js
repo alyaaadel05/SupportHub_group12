@@ -5,7 +5,8 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const { rateLimit } = require("express-rate-limit");
-const { resolveRateLimitMax } = require("./config/rateLimit");
+const { generalLimit } = require("./config/rateLimitProfiles");
+const { securityEventLogger, logSecurityEvent } = require("./middleware/securityEvents");
 
 const pool = require("./db/pool");
 
@@ -48,6 +49,7 @@ if (production) {
 // ==========================================
 
 app.use(helmet());
+app.use(securityEventLogger);
 
 // ==========================================
 // 2. CORS
@@ -96,6 +98,10 @@ const sensitiveAuthLimiter = rateLimit({
   legacyHeaders: false,
   message: {
     error: "Too many authentication attempts. Please try again later."
+  },
+  handler(req, res, next, options) {
+    logSecurityEvent(req, "rate_limited", { limiter: "login-register", max: 30 });
+    res.status(options.statusCode).json(options.message);
   }
 });
 
@@ -103,7 +109,7 @@ const sensitiveAuthLimiter = rateLimit({
 // CSRF retrieval, and logout.
 const sessionLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: resolveRateLimitMax(),
+  limit: generalLimit(),
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: {

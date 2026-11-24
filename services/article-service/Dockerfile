@@ -7,10 +7,12 @@ COPY package*.json ./
 
 RUN npm ci --omit=dev
 
-COPY . .
+COPY --chown=node:node . .
 
 ENV NODE_ENV=production
 
 EXPOSE 3001
 
-CMD ["node", "server.js"]
+USER node
+
+CMD ["node", "start.js"]

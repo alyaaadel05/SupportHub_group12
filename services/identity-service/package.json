@@ -1,4 +1,3 @@
-
 {
   "name": "supporthub-identity-service",
   "version": "1.0.0",
@@ -15,6 +14,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.1176.0",
     "bcryptjs": "^2.4.3",
     "connect-pg-simple": "^10.0.0",
     "cors": "^2.8.5",
@@ -26,4 +26,3 @@
     "pg": "^8.13.1"
   }
 }
-

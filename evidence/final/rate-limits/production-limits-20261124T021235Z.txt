@@ -1,0 +1,7 @@
+Production rate-limit verification - 2026-11-24T02:12:24.558Z - http://localhost:8088
+PASS | author login | HTTP 200
+PASS | duplicate check limited at 30/15 min | first 429 at request 31, 30 allowed
+PASS | public search limited at 120/15 min | first 429 at request 121, 120 allowed
+PASS | login brute force limited at 30/15 min | first 429 at attempt 30 (1 earlier login counted), earlier attempts all 401: true
+
+Total: 4 passed, 0 failed

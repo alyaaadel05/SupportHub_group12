@@ -50,7 +50,7 @@ test("login/registration limiter stays fixed at 30 and is not configurable", () 
 test("session limiter uses the helper and there are exactly two limiters", () => {
   const block = limiterBlock("sessionLimiter");
   assert.equal((block.match(/limit:/g) || []).length, 1);
-  assert.match(block, /limit: resolveRateLimitMax\(\)/);
+  assert.match(block, /limit: generalLimit\(\)/);
   assert.equal((serverSource.match(/rateLimit\(/g) || []).length, 2);
   assert.match(serverSource, /"\/api\/auth\/login",\s*sensitiveAuthLimiter/);
   assert.match(serverSource, /"\/api\/auth\/register",\s*sensitiveAuthLimiter/);

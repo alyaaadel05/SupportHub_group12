@@ -38,7 +38,7 @@ test("server.js has exactly one general /api limiter using the helper", () => {
   assert.equal(limiterLines.length, 1);
   assert.match(limiterLines[0], /^app\.use\("\/api", rateLimit\(/);
   assert.equal((limiterLines[0].match(/limit:/g) || []).length, 1);
-  assert.match(limiterLines[0], /limit: resolveRateLimitMax\(\)/);
+  assert.match(limiterLines[0], /limit: generalLimit\(\)/);
   assert.match(limiterLines[0], /windowMs: 15 \* 60 \* 1000/);
   assert.doesNotMatch(serverSource, /limit:\s*300\b/);
 });

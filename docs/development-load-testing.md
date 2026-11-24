@@ -87,3 +87,12 @@ only; no committed configuration or cloud queue is changed.
 Event format is already compatible: the Article service publishes
 `{ eventId, eventType: "article.submitted", articleId, occurredAt }`, which is
 exactly what the Editorial consumer validates.
+
+## 5. Rate-limit profiles (final submission)
+
+Every service now reads `RATE_LIMIT_PROFILE` (`config/rateLimitProfiles.js`):
+`production` (default) applies per-endpoint limits (for example article create 30,
+duplicate check 30, editorial decisions 60, public search 120, votes 20 per 15 minutes);
+`loadtest` raises them for the isolated k6 stack and is **ignored when NODE_ENV=production**.
+The login/registration limit stays fixed at 30. Results: `evidence/final/rate-limits/`
+(production) and `evidence/final/load/` (k6 workflow test, 1,001 requests).

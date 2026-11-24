@@ -41,18 +41,7 @@
 
   <script src="js/config.js"></script>
   <script src="js/auth.js"></script>
-  <script>
-    document.querySelector("#search-form").addEventListener(
-      "submit", function(event) {
-        event.preventDefault();
-        const text = document.querySelector("#search-input").value.trim();
-        if (text) {
-          window.location.href =
-            "articles.html?q=" + encodeURIComponent(text);
-        }
-      }
-    );
-  </script>
+  <script src="js/home.js"></script>
 </body>
 </html>
 

@@ -5,7 +5,8 @@ const helmet = require("helmet");
 const session = require("express-session");
 const PgSession = require("connect-pg-simple")(session);
 const rateLimit = require("express-rate-limit");
-const { resolveRateLimitMax } = require("./config/rateLimit");
+const { generalLimit } = require("./config/rateLimitProfiles");
+const { securityEventLogger } = require("./middleware/securityEvents");
 const pool = require("./db/pool");
 const { requireCronSecret } = require("./middleware/security");
 const notifications = require("./services/notificationService");
@@ -22,6 +23,7 @@ app.use(cors({
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
 app.use(helmet());
+app.use(securityEventLogger);
 app.use(express.json({ limit: "100kb" }));
 // Browser calls are expected through the Cloudflare Pages same-origin /api proxy.
 // Sessions must use the identical cookie name, secret and Postgres table as Identity and Article.
@@ -33,7 +35,7 @@ app.use(session({
     secure: process.env.NODE_ENV === "production" || process.env.COOKIE_SECURE === "true",
     sameSite: "lax", maxAge: 8 * 60 * 60 * 1000 }
 }));
-app.use("/api", rateLimit({ windowMs: 15 * 60 * 1000, limit: resolveRateLimitMax(), standardHeaders: "draft-7", legacyHeaders: false }));
+app.use("/api", rateLimit({ windowMs: 15 * 60 * 1000, limit: generalLimit(), standardHeaders: "draft-7", legacyHeaders: false }));
 app.get("/api/health", async (req,res,next) => {
   try { await pool.query("SELECT 1"); res.json({ status: "ok", service: "editorial-service" }); }
   catch (e) { next(e); }

@@ -136,10 +136,16 @@ async function renderNavigation() {
 
   nav.replaceChildren();
 
+  const currentPage =
+    window.location.pathname.split("/").pop() || "index.html";
+
   function addLink(text, href) {
     const link = document.createElement("a");
     link.href = href;
     link.textContent = text;
+    if (href === currentPage) {
+      link.setAttribute("aria-current", "page");
+    }
     nav.appendChild(link);
   }
 

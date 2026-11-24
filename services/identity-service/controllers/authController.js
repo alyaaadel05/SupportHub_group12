@@ -138,10 +138,28 @@ async function login(req, res, next) {
   try {
     const { email, password } = req.body || {};
 
-    const user = await authService.loginUser(
-      email,
-      password
-    );
+    let user;
+
+    try {
+      user = await authService.loginUser(email, password);
+    } catch (loginError) {
+      if (loginError.status === 401) {
+        // Security event: failed login. Only a truncated SHA-256 of the
+        // email is stored, never the password or the email itself.
+        const emailHash = require("node:crypto")
+          .createHash("sha256")
+          .update(String(email || "").trim().toLowerCase())
+          .digest("hex")
+          .slice(0, 16);
+
+        await authService.auditLog(null, "LOGIN_FAILED", {
+          emailHash,
+          ip: req.ip
+        });
+      }
+
+      throw loginError;
+    }
 
     // Prevent session fixation.
     req.session.regenerate((error) => {

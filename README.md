@@ -113,3 +113,11 @@ are described in docs/test-plan.md.
 Implementation code prepared.
 Cloud deployment, integration testing, and
 security testing must be completed and documented.
+
+## Final submission (integration/group12-final)
+
+- Integrated Floci stack and one-command setup: `bash infra/floci/setup-supporthub.sh`
+- Technical evidence pack: `docs/final/02-technical-evidence-pack.md`
+- Compliance matrix (PASS / FAIL / NOT VERIFIED): `docs/final/08-compliance-matrix.md`
+- Windows guide: `docs/final/03-local-windows-runbook.md`
+- Evidence: `evidence/final/`
