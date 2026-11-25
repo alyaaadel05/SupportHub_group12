@@ -5,15 +5,17 @@ const helmet = require("helmet");
 const session = require("express-session");
 const PgSession = require("connect-pg-simple")(session);
 const rateLimit = require("express-rate-limit");
+const { generalLimit } = require("./config/rateLimitProfiles");
+const { securityEventLogger } = require("./middleware/securityEvents");
 const pool = require("./db/pool");
-const { requireCronSecret } = require("./middleware/security");
+const { requireCronSecret, allowedOrigins } = require("./middleware/security");
 const notifications = require("./services/notificationService");
 
 if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32 || !process.env.FRONTEND_ORIGIN)
   throw new Error("SESSION_SECRET (32+ chars) and FRONTEND_ORIGIN required");
 const app = express();
 app.use(cors({
-  origin: process.env.FRONTEND_ORIGIN,
+  origin: allowedOrigins(),
   credentials: true,
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "X-CSRF-Token"]
@@ -21,6 +23,7 @@ app.use(cors({
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
 app.use(helmet());
+app.use(securityEventLogger);
 app.use(express.json({ limit: "100kb" }));
 // Browser calls are expected through the Cloudflare Pages same-origin /api proxy.
 // Sessions must use the identical cookie name, secret and Postgres table as Identity and Article.
@@ -32,12 +35,13 @@ app.use(session({
     secure: process.env.NODE_ENV === "production" || process.env.COOKIE_SECURE === "true",
     sameSite: "lax", maxAge: 8 * 60 * 60 * 1000 }
 }));
-app.use("/api", rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: "draft-7", legacyHeaders: false }));
+app.use("/api", rateLimit({ windowMs: 15 * 60 * 1000, limit: generalLimit(), standardHeaders: "draft-7", legacyHeaders: false }));
 app.get("/api/health", async (req,res,next) => {
   try { await pool.query("SELECT 1"); res.json({ status: "ok", service: "editorial-service" }); }
   catch (e) { next(e); }
 });
 app.use("/api", require("./routes/reviewRoutes"));
+app.use("/api", require("./routes/csrfRoutes"));
 app.use("/api", require("./routes/publicationRoutes"));
 app.use("/api", require("./routes/flagRoutes"));
 // Scheduled retry endpoint, secured with its own secret. Configure a scheduler separately.

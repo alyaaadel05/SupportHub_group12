@@ -1,0 +1,18 @@
+Test: Search IAM user least privilege on the team's Floci (supporthub-floci :4566)
+Timestamp: 2026-11-25T19:35:46Z
+Component / owner: Search & Analytics (Nermeen)
+Created if missing: bucket supporthub-search-analytics-exports, user search-analytics-service + 2 inline policies, topic supporthub-editorial-publication-events (Salma). Queues, secrets, existing users unchanged.
+Uses a temporary access key (never printed, deleted at the end).
+
+PASS | expected ALLOW | actual ALLOW | DynamoDB Scan own table
+PASS | expected DENY | actual DENY | DynamoDB DeleteTable
+PASS | expected ALLOW | actual ALLOW | CloudWatch PutMetricData SupportHub/Search
+PASS | expected ALLOW | actual ALLOW | S3 PutObject exports/
+PASS | expected ALLOW | actual ALLOW | S3 GetObject exports/
+PASS | expected DENY | actual DENY | S3 DeleteObject exports/
+PASS | expected DENY | actual DENY | S3 PutObject into Article backups
+PASS | expected DENY | actual DENY | S3 ListAllMyBuckets
+PASS | expected DENY | actual DENY | Secrets GetSecretValue article
+PASS | expected DENY | actual DENY | IAM ListUsers
+temporary keys remaining: 0
+Total: 10 passed, 0 failed

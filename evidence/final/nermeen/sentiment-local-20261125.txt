@@ -1,0 +1,4 @@
+PASS: Positive feedback -> POSITIVE
+PASS: Negative feedback -> NEGATIVE
+PASS: Neutral feedback -> NEUTRAL
+TOTAL: 3/3 passed

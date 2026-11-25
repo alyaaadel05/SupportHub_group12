@@ -1,0 +1,48 @@
+Extra security checks - 2026-11-24T02:19:16Z (integrated stack, cloud sandbox)
+
+S-HMAC-1 internal Article API without service signature:
+{"error":"Invalid service credentials"}  -> HTTP 401
+S-HMAC-2 forged signature (valid format, wrong secret):
+{"error":"Invalid service signature"}  -> HTTP 401
+S-HMAC-3 expired timestamp (10 minutes old):
+{"error":"Expired service request"}  -> HTTP 401
+S-HMAC-4 unknown service name:
+{"error":"Invalid service credentials"}  -> HTTP 401
+S-HMAC-5 Search internal publication endpoint without signature:
+{"error":"Invalid service credentials"}  -> HTTP 401
+S-HMAC-6 Article status transition (Editorial-only) without signature:
+{"error":"Invalid service credentials"}  -> HTTP 401
+
+S-PROXY internal routes are not reachable through the frontend proxy (/internal is not under /api):
+  GET :8088/internal/articles/1 -> HTTP 404
+
+S-HEADERS security headers on an API response (Helmet):
+  Content-Security-Policy: default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  (no X-Powered-By header expected)
+
+S-XSS-1 stored XSS payload in article content: create HTTP 201; read HTTP 200, Content-Type application/json; charset=utf-8
+  returned verbatim as a JSON string (not executed by the API): true
+S-SQLI-2 SQL injection in public search text: HTTP 200, results=0 (treated as plain search text)
+
+S-XSS-2 frontend rendering sinks (innerHTML / insertAdjacentHTML / document.write / eval) in frontend/js:
+  frontend/js/analytics.js:4:// All text is set with textContent (never innerHTML) so search terms cannot inject HTML.
+  (count: 1)
+
+S-SECRETS repository secret scan (all branches, full history):
+  tracked .env files: 0
+  connection strings with real credentials in history: 9
+  AWS-style access key IDs (AKIA...) in history: 0
+  private keys in history: 0
+  infra/floci/.generated ignored by git: yes
+
+FINDING (2026-11-24): a real Neon connection string for endpoint ep-steep-mouse-b9cb7jvq
+(user neondb_owner, password beginning "npg_") was committed in backend/.env.example by
+commit d0a2a2b (2026-11-11) and is reachable from main and all feature branches.
+Action taken: values replaced with placeholders in the current tree (file kept).
+History was NOT rewritten (force-push is not allowed), so the password remains in Git
+history. REQUIRED MANUAL ACTION: rotate (reset) the neondb_owner password for that Neon
+endpoint, or delete that Neon branch/project if it is no longer used.
+The 6 other matches are test fixtures ("test:test@localhost" / "127.0.0.1:1"), not secrets.

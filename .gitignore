@@ -16,3 +16,12 @@ dist/
 coverage/
 
 *.log
+
+# Local copies that may contain secrets or stale code: never commit
+.env.*
+!.env.example
+*.backup-*
+*.before-proxy-*
+
+# Floci setup output: access keys, certificates, demo passwords (never commit)
+infra/floci/.generated/

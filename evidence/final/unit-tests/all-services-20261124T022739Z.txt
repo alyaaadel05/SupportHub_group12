@@ -1,0 +1,38 @@
+Unit test results - 2026-11-24T02:27:39Z - Node v22.23.5
+(dummy non-connecting DATABASE_URL: the suites mock the database)
+
+== services/identity-service
+# tests 25
+# suites 0
+# pass 25
+# fail 0
+# cancelled 0
+# skipped 0
+# duration_ms 274.017645
+
+== services/article-service
+# tests 64
+# suites 0
+# pass 64
+# fail 0
+# cancelled 0
+# skipped 0
+# duration_ms 435.266801
+
+== services/editorial-service
+# tests 169
+# suites 0
+# pass 169
+# fail 0
+# cancelled 0
+# skipped 0
+# duration_ms 1102.711699
+
+== services/search-analytics-service
+# tests 93
+# suites 0
+# pass 93
+# fail 0
+# cancelled 0
+# skipped 0
+# duration_ms 521.546832

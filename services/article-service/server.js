@@ -9,6 +9,8 @@ const cors = require("cors");
 const session = require("express-session");
 const pgSession = require("connect-pg-simple")(session);
 const rateLimit = require("express-rate-limit");
+const { generalLimit } = require("./config/rateLimitProfiles");
+const { securityEventLogger } = require("./middleware/securityEvents");
 const crypto = require("node:crypto");
 
 const pool = require("./db/pool");
@@ -48,6 +50,9 @@ app.set("trust proxy", 1);
 
 app.use(helmet());
 
+// Structured 401/403 security-event log lines (no secrets, no bodies).
+app.use(securityEventLogger);
+
 app.use(
   express.json({
     limit: "100kb",
@@ -59,7 +64,10 @@ app.use(
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_ORIGIN,
+    origin: (process.env.FRONTEND_ORIGIN || "")
+      .split(",")
+      .map(value => value.trim())
+      .filter(Boolean),
     credentials: true,
     methods: [
       "GET",
@@ -113,7 +121,7 @@ app.use(
   "/api",
   rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: 300,
+    limit: generalLimit(),
     standardHeaders: "draft-7",
     legacyHeaders: false
   })
@@ -245,6 +253,7 @@ app.get(
 
 // -----------------------------------------
 // 9. INTERNAL ARTICLE STATUS UPDATES
+// WITH OPERATION ID IDEMPOTENCY
 // -----------------------------------------
 
 app.patch(
@@ -252,6 +261,8 @@ app.patch(
   requireServiceSignature,
   async (req, res, next) => {
     try {
+      // Only the authenticated Editorial Service
+      // may perform internal status transitions.
       if (
         req.serviceName !== "editorial-service"
       ) {
@@ -261,24 +272,26 @@ app.patch(
       }
 
       const result =
-        await articleService.transitionStatus(
-          articleService.validId(
-            req.params.id
-          ),
+        await articleService.transitionEditorialStatus(
+          articleService.validId(req.params.id),
           req.body?.from,
-          req.body?.to
+          req.body?.to,
+          req.body?.operationId
         );
 
+      // New operations with an incorrect
+      // expected status must not proceed.
       if (!result) {
         return res.status(409).json({
-          error:
-            "Invalid article status transition"
+          error: "Invalid article status transition"
         });
       }
 
-      res.json({
-        article: result
-      });
+      // transitionEditorialStatus already returns
+      // the response object { article }.
+      // Identical retries return that same object.
+      return res.json(result);
+
     } catch (error) {
       next(error);
     }
@@ -342,6 +355,14 @@ app.use((err, req, res, next) => {
   ) {
     return res.status(400).json({
       error: "Invalid JSON"
+    });
+  }
+
+  // Upstream provider failure (for example the Stack Exchange API or an
+  // invalid stored S3 backup): keep 502 and the safe message from the service.
+  if (err.status === 502) {
+    return res.status(502).json({
+      error: err.message || "Upstream service unavailable"
     });
   }
 

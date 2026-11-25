@@ -1,0 +1,56 @@
+
+=== Phase: published — article 1, keyword "password" — 2026-11-21T22:52:31Z ===
+Keyword search ?q=password        -> FOUND
+Category search ?category=1   -> FOUND
+Search index row               -> [{"article_id":"1","title":"How to Reset Your Password","updated_at":"2026-11-21T21:15:04.633Z"}]
+Open article                   -> HTTP 200
+Views before / after open      -> [{"n":9}] / [{"n":10}]
+Vote helpful                   -> {"articleId":1,"helpful":true,"saved":true}  (HTTP 200)
+Change vote to unhelpful       -> {"articleId":1,"helpful":false,"saved":true}  (HTTP 200)
+Vote rows for this article     -> [{"user_id":"10","helpful":false}]
+Analytics (most viewed + votes)-> {"article_id":"1","title":"How to Reset Your Password","views":10,"helpful_votes":0,"unhelpful_votes":1} | totalVotes 1
+=== Article 21 BEFORE publication — 2026-11-23T00:28:56Z ===
+Article Service (signed GET /internal/articles/21 from Search) -> HTTP 404 {"error":"Article not found"} (status approved, not published)
+Search API /api/public/articles/21 -> HTTP 404
+Search index row -> []
+
+=== Phase: before — article 21, keyword "3bac7db5" — 2026-11-23T00:32:39Z ===
+Keyword search ?q=3bac7db5        -> not found
+Search index row               -> []
+Open article                   -> HTTP 404
+
+=== Phase: published — article 21, keyword "3bac7db5" — 2026-11-23T00:44:19Z ===
+Keyword search ?q=3bac7db5        -> not found
+Search index row               -> []
+Open article                   -> HTTP 404
+Views before / after open      -> [{"n":0}] / [{"n":0}]
+Vote helpful                   -> {"error":"Login required"}  (HTTP 401)
+Change vote to unhelpful       -> {"error":"Login required"}  (HTTP 401)
+Vote rows for this article     -> []
+Analytics (most viewed + votes)-> "not in top 10" | totalVotes 1
+
+=== Phase: before — article 21, keyword "3bac7db5" — 2026-11-23T00:45:43Z ===
+Keyword search ?q=3bac7db5        -> not found
+Category search ?category=6   -> not found
+Search index row               -> []
+Open article                   -> HTTP 404
+
+=== Phase: published — article 21, keyword "3bac7db5" — 2026-11-23T00:54:16Z ===
+Keyword search ?q=3bac7db5        -> FOUND
+Category search ?category=6   -> FOUND
+Search index row               -> [{"article_id":"21","title":"SupportHub DEV DEMO - Password Reset 3bac7db5","updated_at":"2026-11-23T00:53:15.987Z"}]
+Open article                   -> HTTP 200
+Views before / after open      -> [{"n":1}] / [{"n":2}]
+Vote helpful                   -> {"articleId":21,"helpful":true,"saved":true}  (HTTP 200)
+Change vote to unhelpful       -> {"articleId":21,"helpful":false,"saved":true}  (HTTP 200)
+Vote rows for this article     -> [{"user_id":"10","helpful":false}]
+Analytics (most viewed + votes)-> {"article_id":"21","title":"SupportHub DEV DEMO - Password Reset 3bac7db5","views":2,"helpful_votes":0,"unhelpful_votes":1} | totalVotes 2
+
+=== Phase: unpublished — article 21, keyword "3bac7db5" — 2026-11-23T01:25:53Z ===
+Keyword search ?q=3bac7db5        -> FOUND
+Category search ?category=6   -> FOUND
+Search index row               -> [{"article_id":"21","title":"SupportHub DEV DEMO - Password Reset 3bac7db5","updated_at":"2026-11-23T00:53:15.987Z"}]
+Open article                   -> HTTP 200
+New vote after unpublishing    -> {"articleId":21,"helpful":true,"saved":true}  (HTTP 200)
+--- Records after unpublishing (should be kept, not deleted) ---
+views: 3 | votes: [{"user_id":"10","helpful":true}]

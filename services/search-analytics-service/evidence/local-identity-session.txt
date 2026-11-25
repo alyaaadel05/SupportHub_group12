@@ -1,0 +1,4 @@
+Local Identity -> Search session test — 2026-11-21T00:59:57Z
+Login: editor via http://127.0.0.1:3006/api/auth/login (cookie supporthub.sid)
+With editor cookie    -> 200  {"totalSearches":16805,"successfulSearches":11201,"zeroResultSearches":5604,"searchSuccess
+Without any cookie    -> 401  {"error":"Login required"}

@@ -1,0 +1,248 @@
+# SupportHub Group 12 - INTEGRATED LOCAL STACK (Floci + all services)
+#
+# One stack for the whole application:
+#   floci          AWS emulator (IAM enforcement ON) - S3, SQS, SNS, Lambda,
+#                  DynamoDB, CloudWatch, Secrets Manager, IAM
+#   postgres       local PostgreSQL standing in for Neon (TLS, generated CA)
+#   identity       shared Identity Service                 (Alyaa)
+#   article        Article & Category Management + worker  (Alyaa)
+#   editorial      Editorial Workflow + 2 workers          (Salma)
+#   search         Search, Feedback & Analytics            (Nermeen)
+#   frontend       same-origin dev proxy on :8088
+#
+# COEXISTS with the team's existing containers (supporthub-floci,
+# supporthub-article, supporthub-identity, supporthub-editorial, Postgres):
+# every name here is prefixed "supporthub-int-" and host ports are
+# 3105-3108 / 8088, so nothing existing is replaced or port-blocked.
+#
+# Do not start this file directly the first time: run
+#   bash infra/floci/setup-supporthub.sh
+# which creates the AWS resources, IAM identities, secrets and access-key
+# files in infra/floci/.generated/ (git-ignored) that these services need.
+#
+# No secret is written in this file. Each service gets ONLY its own IAM
+# access key (env_file) and reads everything else from AWS Secrets Manager.
+
+name: ${SUPPORTHUB_PREFIX:-supporthub-int}
+
+x-service-common: &service-common
+  restart: unless-stopped
+  networks: [supporthub-int-net]
+  volumes:
+    - ${SUPPORTHUB_GEN_DIR:-./.generated}/certs/ca.crt:/certs/ca.crt:ro
+
+x-common-env: &common-env
+  AWS_REGION: us-east-1
+  AWS_ENDPOINT_URL: http://floci:4566
+  AWS_SECRETS_ENABLED: "true"
+  SECRETS_REQUIRED: "true"
+  NODE_EXTRA_CA_CERTS: /certs/ca.crt
+  FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:${SUPPORTHUB_FRONTEND_PORT:-8088}}
+  COOKIE_SECURE: "false"
+  NODE_ENV: development
+  # production = restrictive limits (default); loadtest = relaxed limits for k6
+  RATE_LIMIT_PROFILE: ${RATE_LIMIT_PROFILE:-production}
+
+services:
+  floci:
+    image: floci/floci:latest
+    container_name: ${SUPPORTHUB_PREFIX:-supporthub-int}-floci
+    ports:
+      - "127.0.0.1:${SUPPORTHUB_FLOCI_PORT:-4566}:4566"
+    environment:
+      FLOCI_STORAGE_MODE: persistent
+      FLOCI_STORAGE_PERSISTENT_PATH: /app/data
+      FLOCI_SERVICES_IAM_ENFORCEMENT_ENABLED: "true"
+    volumes:
+      - floci-data:/app/data
+      # Floci starts Lambda functions as sibling containers.
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      supporthub-int-net:
+        aliases: [floci]
+    restart: unless-stopped
+    # Started ONLY when no existing "supporthub-floci" container is found.
+    # If you already run Floci (infra/floci/docker-compose.yml), the setup
+    # script attaches that container to supporthub-int-net as "floci" instead.
+    profiles: [own-floci]
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ${SUPPORTHUB_PREFIX:-supporthub-int}-postgres
+    environment:
+      POSTGRES_USER: supporthub
+      POSTGRES_DB: supporthub
+      POSTGRES_PASSWORD_FILE: /run/pg/password
+    entrypoint:
+      - sh
+      - -c
+      - >
+        mkdir -p /run/pg &&
+        cp /certs-src/server.crt /certs-src/server.key /certs-src/db-password /run/pg/ &&
+        mv /run/pg/db-password /run/pg/password &&
+        chown -R postgres:postgres /run/pg && chmod 600 /run/pg/server.key /run/pg/password &&
+        exec docker-entrypoint.sh postgres
+        -c ssl=on -c ssl_cert_file=/run/pg/server.crt -c ssl_key_file=/run/pg/server.key
+        -c max_connections=200
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ${SUPPORTHUB_GEN_DIR:-./.generated}/certs:/certs-src:ro
+      - ./db/00-core-schema.sql:/docker-entrypoint-initdb.d/00-core-schema.sql:ro
+      - ../../services/article-service/migrations/001_article_event_outbox.sql:/docker-entrypoint-initdb.d/10-article-001.sql:ro
+      - ../../services/article-service/migrations/002_article_transition_idempotency.sql:/docker-entrypoint-initdb.d/11-article-002.sql:ro
+      - ../../services/editorial-service/migrations/001_editorial.sql:/docker-entrypoint-initdb.d/20-editorial-001.sql:ro
+      - ../../services/editorial-service/migrations/002_publication_outbox_claims.sql:/docker-entrypoint-initdb.d/21-editorial-002.sql:ro
+      - ../../services/editorial-service/migrations/003_editorial_workflow_operations.sql:/docker-entrypoint-initdb.d/22-editorial-003.sql:ro
+      - ../../services/editorial-service/migrations/004_editorial_publication_operation.sql:/docker-entrypoint-initdb.d/23-editorial-004.sql:ro
+      - ../../services/editorial-service/migrations/005_editorial_event_inbox.sql:/docker-entrypoint-initdb.d/24-editorial-005.sql:ro
+      - ../../services/editorial-service/migrations/006_editorial_publication_events.sql:/docker-entrypoint-initdb.d/25-editorial-006.sql:ro
+      - ../../services/editorial-service/migrations/007_flag_integrity.sql:/docker-entrypoint-initdb.d/26-editorial-007.sql:ro
+      - ../../services/search-analytics-service/migrations/001_search_analytics.sql:/docker-entrypoint-initdb.d/30-search-001.sql:ro
+      - ../../services/search-analytics-service/migrations/002_search_indexes.sql:/docker-entrypoint-initdb.d/31-search-002.sql:ro
+      - ./db/90-seed-categories.sql:/docker-entrypoint-initdb.d/90-seed-categories.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U supporthub -d supporthub"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+    networks: [supporthub-int-net]
+    restart: unless-stopped
+    # No host port: only the services on supporthub-net can reach the database.
+
+  identity:
+    <<: *service-common
+    build: ../../services/identity-service
+    image: supporthub-int-identity:local
+    container_name: ${SUPPORTHUB_PREFIX:-supporthub-int}-identity
+    env_file: ["${SUPPORTHUB_GEN_DIR:-./.generated}/identity.aws.env"]
+    environment:
+      <<: *common-env
+      PORT: "3003"
+      SECRET_IDS: supporthub/shared/session,supporthub/shared/database,supporthub/identity/runtime
+      IDENTITY_SNS_ENABLED: "true"
+      IDENTITY_SNS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:supporthub-identity-security-alerts
+    ports: ["127.0.0.1:${SUPPORTHUB_PORT_BASE:-310}6:3003"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  article:
+    <<: *service-common
+    build: ../../services/article-service
+    image: supporthub-int-article:local
+    container_name: ${SUPPORTHUB_PREFIX:-supporthub-int}-article
+    env_file: ["${SUPPORTHUB_GEN_DIR:-./.generated}/article.aws.env"]
+    environment:
+      <<: *common-env
+      PORT: "3001"
+      SECRET_IDS: supporthub/shared/session,supporthub/shared/service-hmac,supporthub/shared/database,supporthub/article/runtime-config
+      AWS_SECRET_NAME: supporthub/article/runtime-config
+      AWS_S3_BUCKET: supporthub-article-backups
+      SQS_QUEUE_URL: http://floci:4566/000000000000/supporthub-article-events
+    ports: ["127.0.0.1:${SUPPORTHUB_PORT_BASE:-310}5:3001"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  article-outbox-worker:
+    <<: *service-common
+    image: supporthub-int-article:local
+    container_name: ${SUPPORTHUB_PREFIX:-supporthub-int}-article-outbox-worker
+    command: ["node", "start.js", "services/articleOutboxScheduler.js"]
+    env_file: ["${SUPPORTHUB_GEN_DIR:-./.generated}/article.aws.env"]
+    environment:
+      <<: *common-env
+      SECRET_IDS: supporthub/shared/database
+      SQS_QUEUE_URL: http://floci:4566/000000000000/supporthub-article-events
+    depends_on:
+      article: { condition: service_started }
+
+  editorial:
+    <<: *service-common
+    build: ../../services/editorial-service
+    image: supporthub-int-editorial:local
+    container_name: ${SUPPORTHUB_PREFIX:-supporthub-int}-editorial
+    env_file: ["${SUPPORTHUB_GEN_DIR:-./.generated}/editorial.aws.env"]
+    environment:
+      <<: *common-env
+      PORT: "3002"
+      SECRET_IDS: supporthub/shared/session,supporthub/shared/service-hmac,supporthub/shared/database,supporthub/editorial/runtime
+      ARTICLE_SERVICE_URL: http://article:3001
+      SEARCH_SERVICE_URL: http://search:3004
+    ports: ["127.0.0.1:${SUPPORTHUB_PORT_BASE:-310}7:3002"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  editorial-article-worker:
+    <<: *service-common
+    image: supporthub-int-editorial:local
+    container_name: ${SUPPORTHUB_PREFIX:-supporthub-int}-editorial-article-worker
+    command: ["node", "start.js", "workers/articleEventConsumer.js"]
+    env_file: ["${SUPPORTHUB_GEN_DIR:-./.generated}/editorial.aws.env"]
+    environment:
+      <<: *common-env
+      SECRET_IDS: supporthub/shared/service-hmac,supporthub/shared/database
+      ARTICLE_SERVICE_URL: http://article:3001
+      SQS_ENDPOINT_URL: http://floci:4566
+      ARTICLE_EVENTS_QUEUE_URL: http://floci:4566/000000000000/supporthub-article-events
+      SQS_WAIT_TIME_SECONDS: "5"
+      SQS_VISIBILITY_TIMEOUT: "30"
+    depends_on:
+      editorial: { condition: service_started }
+
+  editorial-publication-worker:
+    <<: *service-common
+    image: supporthub-int-editorial:local
+    container_name: ${SUPPORTHUB_PREFIX:-supporthub-int}-editorial-publication-worker
+    command: ["node", "start.js", "workers/publicationEventPublisher.js"]
+    env_file: ["${SUPPORTHUB_GEN_DIR:-./.generated}/editorial.aws.env"]
+    environment:
+      <<: *common-env
+      SECRET_IDS: supporthub/shared/database
+      SNS_ENDPOINT_URL: http://floci:4566
+      EDITORIAL_PUBLICATION_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:supporthub-editorial-publication-events
+    depends_on:
+      editorial: { condition: service_started }
+
+  search:
+    <<: *service-common
+    build: ../../services/search-analytics-service
+    image: supporthub-int-search:local
+    container_name: ${SUPPORTHUB_PREFIX:-supporthub-int}-search
+    env_file: ["${SUPPORTHUB_GEN_DIR:-./.generated}/search.aws.env"]
+    environment:
+      <<: *common-env
+      PORT: "3004"
+      SECRET_IDS: supporthub/shared/session,supporthub/shared/service-hmac,supporthub/shared/database,supporthub/search/runtime
+      ARTICLE_SERVICE_URL: http://article:3001
+      DYNAMODB_COUNTERS_TABLE: supporthub-search-counters
+      CLOUDWATCH_NAMESPACE: SupportHub/Search
+      METRICS_FLUSH_MS: "5000"
+      S3_EXPORT_BUCKET: supporthub-search-analytics-exports
+      REQUIRE_TURNSTILE_FOR_VOTES: ${REQUIRE_TURNSTILE_FOR_VOTES:-true}
+      DB_POOL_MAX: "10"
+    ports: ["127.0.0.1:${SUPPORTHUB_PORT_BASE:-310}8:3004"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  frontend:
+    image: node:22-alpine
+    container_name: ${SUPPORTHUB_PREFIX:-supporthub-int}-frontend
+    working_dir: /app
+    command: ["node", "dev-server.js"]
+    environment:
+      IDENTITY_URL: http://identity:3003
+      ARTICLE_URL: http://article:3001
+      EDITORIAL_URL: http://editorial:3002
+      SEARCH_URL: http://search:3004
+    volumes:
+      - ../../frontend:/app:ro
+    ports: ["127.0.0.1:${SUPPORTHUB_FRONTEND_PORT:-8088}:8080"]
+    networks: [supporthub-int-net]
+    restart: unless-stopped
+
+networks:
+  supporthub-int-net:
+    name: ${SUPPORTHUB_PREFIX:-supporthub-int}-net
+
+volumes:
+  floci-data:
+  pg-data:

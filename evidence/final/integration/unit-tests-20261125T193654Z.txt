@@ -1,0 +1,18 @@
+Test: npm test in each service (dummy DATABASE_URL, no DB used)
+Timestamp: 2026-11-25T19:36:54Z | Owner: each service owner | Node v26.13.1 | Expected: 0 failures
+== identity
+ℹ tests 32
+ℹ pass 32
+ℹ fail 0
+== article
+ℹ tests 64
+ℹ pass 64
+ℹ fail 0
+== editorial
+ℹ tests 175
+ℹ pass 175
+ℹ fail 0
+== search-analytics
+ℹ tests 99
+ℹ pass 99
+ℹ fail 0

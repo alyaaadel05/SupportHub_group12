@@ -1,0 +1,7 @@
+== IAM least privilege (user search-analytics-service)
+-- read own table (ALLOW):
+13
+-- list ALL buckets (DENY):
+aws: [ERROR]: An error occurred (AccessDenied) when calling the ListBuckets operation: User is not authorized to perform: s3:ListAllMyBuckets
+-- metric to own namespace (ALLOW):
+allowed

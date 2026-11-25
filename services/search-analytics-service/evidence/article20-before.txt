@@ -1,0 +1,2 @@
+Article 20 BEFORE publication — 2026-11-21T14:04:36Z
+GET /api/public/articles/20 -> {"error":"Published article not found"}  (HTTP 404)

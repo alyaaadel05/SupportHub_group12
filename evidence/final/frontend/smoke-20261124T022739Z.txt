@@ -1,0 +1,23 @@
+SupportHub frontend smoke test - 2026-11-24T02:27:24.832Z - http://localhost:8088
+PASS | CSP header present on static pages
+PASS | home page renders hero and navigation
+PASS | reader search shows published articles from the Search API | 9 results
+PASS | category filter populated from Article API
+PASS | registration form and Turnstile container present
+PASS | Turnstile script requested (allowed by CSP script-src)
+PASS | author login redirects to editor.html
+PASS | navigation shows author links (My Articles) and marks the current page
+PASS | author article list loads (GET /api/articles/mine)
+PASS | Stack Exchange references: results, or the safe 502 message when api.stackexchange.com is blocked | Reference provider unavailable
+PASS | versions page loads for author
+PASS | author is refused on review.html (role guard; backend also returns 403)
+PASS | editor login redirects to review.html
+PASS | review queue rendered
+PASS | outdated-flag panel rendered
+PASS | editorial history timeline (GET /api/articles/1/history)
+PASS | analytics dashboard shows statistics
+PASS | no horizontal scroll at 390 px phone width
+PASS | no Content-Security-Policy violations on any page
+PASS | no uncaught page errors or unexpected dialogs
+
+Total: 20 passed, 0 failed

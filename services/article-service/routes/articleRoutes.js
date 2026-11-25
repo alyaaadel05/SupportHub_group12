@@ -8,6 +8,13 @@ const {
   requireCsrf,
   assertOrigin
 } = require("../middleware/security");
+const { createLimiter } = require("../config/rateLimitProfiles");
+
+// Production per-client budgets (15 min); relaxed only in the loadtest profile.
+const createLimit = createLimiter("article-create", 30);
+const updateLimit = createLimiter("article-update", 60);
+const duplicateLimit = createLimiter("duplicate-check", 30);
+const submitLimit = createLimiter("article-submit", 30);
 
 // Security checks for requests that modify articles.
 const secure = [
@@ -22,6 +29,7 @@ const authorAccess = requireRole("author", "admin");
 router.post(
   "/articles/check-duplicates",
   authorAccess,
+  duplicateLimit,
   ...secure,
   articleController.duplicates
 );
@@ -37,6 +45,7 @@ router.get(
 router.post(
   "/articles",
   authorAccess,
+  createLimit,
   ...secure,
   articleController.create
 );
@@ -52,6 +61,7 @@ router.get(
 router.patch(
   "/articles/:id",
   authorAccess,
+  updateLimit,
   ...secure,
   articleController.update
 );
@@ -63,5 +73,16 @@ router.delete(
   ...secure,
   articleController.remove
 );
+
+
+ // Authors submit their drafts for review.
+router.post(
+  "/articles/:id/submit",
+  authorAccess,
+  submitLimit,
+  ...secure,
+  articleController.submit
+);
+
 
 module.exports = router;

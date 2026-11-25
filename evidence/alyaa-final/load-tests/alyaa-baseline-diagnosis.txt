@@ -1,0 +1,36 @@
+﻿SupportHub - Alyaa k6 Baseline Diagnosis
+Date: 2026-11-23
+
+Environment: Local Development
+Tools: Grafana k6 v2.4.0
+
+Workload:
+- 1000 HTTP requests
+- 10 virtual users
+- 500 Article health requests
+- 500 Identity health requests
+
+Observed results:
+- 793 successful requests
+- 207 failed requests
+- Failure rate: 20.70%
+- Average latency: 175.32 ms
+- P95 latency: 426.34 ms
+- Throughput: 56.35 requests/second
+
+Security configuration:
+- Article: 300 requests / 15 minutes
+- Identity session: 300 requests / 15 minutes
+- Identity sensitive authentication: 30 requests / 15 minutes
+
+Diagnosis:
+Article Service returned HTTP 429 after the load test.
+Rate limiting is a likely cause of many failures.
+The original k6 test did not capture status-code breakdowns.
+Therefore, not all failures can be conclusively classified as HTTP 429.
+
+Next:
+- Capture separate HTTP 200, 429, and 5xx counts
+- Run separate Article and Identity tests
+- Test authorized author and editor workflows
+- Preserve rate limits rather than disabling them

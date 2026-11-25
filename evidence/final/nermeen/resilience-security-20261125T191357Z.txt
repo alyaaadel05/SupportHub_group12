@@ -1,0 +1,112 @@
+Test command: node tests/integration/resilience-check.mjs
+Timestamp: 2026-11-25T19:13:57.394Z
+Component / owner: Search & Analytics (Nermeen)
+Environment: isolated stack supporthub-iso-* (own Floci :4567, own PostgreSQL; no Neon, no team containers)
+Evidence source: real HTTP responses, database queries, AWS CLI and docker stop/start
+
+[PASS] public search while AWS (Floci) is down
+    time:     2026-11-25T19:12:48.148Z
+    expected: HTTP 200
+    actual:   HTTP 200
+[PASS] analytics S3 export while AWS is down
+    time:     2026-11-25T19:12:56.212Z
+    expected: controlled 5xx, no crash
+    actual:   HTTP 500
+[PASS] analytics overview (PostgreSQL) while AWS is down
+    time:     2026-11-25T19:12:56.227Z
+    expected: HTTP 200
+    actual:   HTTP 200
+[PASS] 10 concurrent votes by one user on one article
+    time:     2026-11-25T19:13:25.643Z
+    expected: one stored vote
+    actual:   HTTP 200, rows=1
+[PASS] vote can be changed without adding a row
+    time:     2026-11-25T19:13:26.021Z
+    expected: 1 row, helpful=f
+    actual:   1 row, helpful=false
+[PASS] invalid vote value
+    time:     2026-11-25T19:13:26.172Z
+    expected: HTTP 400
+    actual:   HTTP 400
+[PASS] vote without Turnstile token
+    time:     2026-11-25T19:13:26.177Z
+    expected: HTTP 400 or 403
+    actual:   HTTP 403
+[PASS] vote without CSRF token
+    time:     2026-11-25T19:13:26.183Z
+    expected: HTTP 403
+    actual:   HTTP 403
+[PASS] written feedback classified locally (POSITIVE)
+    time:     2026-11-25T19:13:26.507Z
+    expected: HTTP 201, stored POSITIVE
+    actual:   HTTP 201, stored POSITIVE (1 rows)
+[PASS] written feedback classified locally (NEGATIVE)
+    time:     2026-11-25T19:13:26.852Z
+    expected: HTTP 201, stored NEGATIVE
+    actual:   HTTP 201, stored NEGATIVE (2 rows)
+[PASS] written feedback classified locally (NEUTRAL)
+    time:     2026-11-25T19:13:27.174Z
+    expected: HTTP 201, stored NEUTRAL
+    actual:   HTTP 201, stored NEUTRAL (3 rows)
+[PASS] empty feedback
+    time:     2026-11-25T19:13:27.293Z
+    expected: HTTP 400
+    actual:   HTTP 400
+[PASS] sentiment appears in the analytics overview
+    time:     2026-11-25T19:13:43.339Z
+    expected: HTTP 200 with POSITIVE, NEGATIVE, NEUTRAL
+    actual:   HTTP 200, sentiment=[{"label":"NEGATIVE","count":1},{"label":"NEUTRAL","count":1},{"label":"POSITIVE","count":1}]
+[PASS] analytics totalSearches equals the database
+    time:     2026-11-25T19:13:43.445Z
+    expected: 4
+    actual:   4
+[PASS] public request for a draft
+    time:     2026-11-25T19:13:43.466Z
+    expected: HTTP 404
+    actual:   HTTP 404
+[PASS] draft is not in public search
+    time:     2026-11-25T19:13:43.584Z
+    expected: draft ID absent
+    actual:   HTTP 200, 2 results
+[PASS] pagination limit
+    time:     2026-11-25T19:13:43.591Z
+    expected: at most 1 result
+    actual:   HTTP 200, 1 result(s)
+[PASS] 600-character query
+    time:     2026-11-25T19:13:43.594Z
+    expected: HTTP 400
+    actual:   HTTP 400
+[PASS] SQL injection text in search
+    time:     2026-11-25T19:13:43.718Z
+    expected: handled as plain text (200 or 400), tables intact
+    actual:   HTTP 200, articles=t
+[PASS] analytics without login
+    time:     2026-11-25T19:13:43.722Z
+    expected: HTTP 401
+    actual:   HTTP 401
+[PASS] analytics exports as author
+    time:     2026-11-25T19:13:43.729Z
+    expected: HTTP 403
+    actual:   HTTP 403
+[PASS] internal publication endpoint without signature
+    time:     2026-11-25T19:13:43.735Z
+    expected: HTTP 401
+    actual:   HTTP 401
+[PASS] S3 CSV export after recovery
+    time:     2026-11-25T19:13:43.788Z
+    expected: created and listed
+    actual:   HTTP 201, listed HTTP 200
+[PASS] CloudWatch custom metrics recorded
+    time:     2026-11-25T19:13:46.687Z
+    expected: at least 1 metric
+    actual:   Searches, IamProbe, ZeroResultSearches, ServerErrors, ClientErrors, LatencyMs, Requests
+[PASS] DynamoDB live counters stored
+    time:     2026-11-25T19:13:49.589Z
+    expected: at least 1 item
+    actual:   8 items
+[FAIL] PostgreSQL stopped and started
+    time:     2026-11-25T19:13:57.391Z
+    expected: health 503 while down, 200 after; data kept
+    actual:   down HTTP 500, recovered=true, votes kept=1
+
+Total: 25 passed, 1 failed

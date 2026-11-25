@@ -1,0 +1,31 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SearchCountersReadWrite",
+      "Effect": "Allow",
+      "Action": ["dynamodb:UpdateItem", "dynamodb:Scan"],
+      "Resource": "arn:aws:dynamodb:us-east-1:000000000000:table/supporthub-search-counters"
+    },
+        {
+      "Sid": "SearchMetricsOnly",
+      "Effect": "Allow",
+      "Action": "cloudwatch:PutMetricData",
+      "Resource": "*",
+      "Condition": { "StringEqualsIfExists": { "cloudwatch:namespace": "SupportHub/Search" } }
+    },
+    {
+      "Sid": "AnalyticsExportsObjects",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject"],
+      "Resource": "arn:aws:s3:::supporthub-search-analytics-exports/exports/*"
+    },
+    {
+      "Sid": "AnalyticsExportsList",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::supporthub-search-analytics-exports",
+      "Condition": { "StringLike": { "s3:prefix": "exports/*" } }
+    }
+  ]
+}

@@ -1,0 +1,142 @@
+Test: SUPPORTHUB_ISOLATED=true bash infra/floci/setup-supporthub.sh
+Timestamp: 2026-11-25T18:49:28Z | Host: Windows 11 Docker Desktop | Owner: group (integration)
+Expected: every check PASS
+
+==> Checking prerequisites
+
+==> Preparing infra/floci/.generated/isolated (certificates, database password)
+  [PASS] local Postgres TLS certificate created
+
+==> Starting Floci and PostgreSQL
+  [PASS] started own Floci container supporthub-iso-floci
+  [PASS] Floci healthy at http://localhost:4567
+  [PASS] PostgreSQL healthy (TLS on, no host port)
+  [PASS] AWS CLI connectivity to Floci
+
+==> S3 buckets
+  [PASS] S3 bucket supporthub-article-backups created
+  [PASS] S3 bucket supporthub-search-analytics-exports created
+
+==> SQS queues (article events + dead-letter queue)
+  [PASS] SQS supporthub-article-events created (redrive to DLQ after 5 receives)
+
+==> SNS topic
+  [PASS] SNS topic supporthub-editorial-publication-events
+  [PASS] SNS topic supporthub-identity-security-alerts
+
+==> DynamoDB table
+  [PASS] DynamoDB supporthub-search-counters created
+
+==> Secrets Manager
+  [PASS] secret supporthub/shared/session created
+  [PASS] secret supporthub/shared/service-hmac created
+  [PASS] secret supporthub/shared/database created
+  [PASS] secret supporthub/article/runtime-config created
+  [PASS] secret supporthub/editorial/runtime created
+  [PASS] secret supporthub/search/runtime created
+  [PASS] secret supporthub/identity/runtime created
+
+==> IAM identities and policies
+  [PASS] IAM user supporthub-identity-service (2 policies, key in infra/floci/.generated/isolated/identity.aws.env)
+  [PASS] IAM user supporthub-article-service (3 policies, key in infra/floci/.generated/isolated/article.aws.env)
+  [PASS] IAM user supporthub-editorial-service (3 policies, key in infra/floci/.generated/isolated/editorial.aws.env)
+  [PASS] IAM user search-analytics-service (2 policies, key in infra/floci/.generated/isolated/search.aws.env)
+
+==> Editorial Lambda
+  [PASS] Lambda supporthub-editorial-publication-outcome created
+  [PASS] SNS -> Lambda subscription created
+
+==> Building and starting services (RATE_LIMIT_PROFILE=production)
+ Container supporthub-iso-article Started 
+ Container supporthub-iso-article-outbox-worker Starting 
+ Container supporthub-iso-editorial-article-worker Started 
+ Container supporthub-iso-editorial-publication-worker Started 
+ Container supporthub-iso-article-outbox-worker Started 
+  [PASS] docker compose up (all services)
+
+==> Health checks
+  [PASS] Identity healthy (http://127.0.0.1:3206/api/health)
+  [PASS] Article healthy (http://127.0.0.1:3205/api/health)
+  [PASS] Editorial healthy (http://127.0.0.1:3207/api/health)
+  [PASS] Search & Analytics healthy (http://127.0.0.1:3208/api/health)
+  [PASS] Frontend proxy healthy (http://127.0.0.1:8188/index.html)
+  [PASS] Proxy -> Identity CSRF healthy (http://127.0.0.1:8188/api/auth/csrf)
+  [PASS] worker supporthub-iso-article-outbox-worker running
+  [PASS] worker supporthub-iso-editorial-article-worker running
+  [PASS] worker supporthub-iso-editorial-publication-worker running
+
+==> Demo accounts (local database only)
+  [PASS] demo accounts present (author, author2, editor, editor2, admin @supporthub.test)
+
+==> IAM permission tests (allowed and denied operations per component)
+
+--- article (IAM user supporthub-article-service) ---
+PASS | expected ALLOW | actual ALLOW | S3 PutObject own prefix articles/ (version backup)
+PASS | expected ALLOW | actual ALLOW | S3 GetObject own prefix articles/ (backup retrieval)
+PASS | expected DENY  | actual DENY  | S3 DeleteObject (backups are append-only)
+PASS | expected DENY  | actual DENY  | S3 PutObject outside articles/ prefix
+PASS | expected DENY  | actual DENY  | S3 PutObject into Search exports bucket (other component)
+PASS | expected DENY  | actual DENY  | S3 ListAllMyBuckets
+PASS | expected ALLOW | actual ALLOW | SQS SendMessage to supporthub-article-events (outbox publish)
+PASS | expected DENY  | actual DENY  | SQS ReceiveMessage (consumer action belongs to Editorial)
+PASS | expected ALLOW | actual ALLOW | Secrets GetSecretValue supporthub/article/runtime-config
+PASS | expected ALLOW | actual ALLOW | Secrets GetSecretValue supporthub/shared/session
+PASS | expected DENY  | actual DENY  | Secrets GetSecretValue supporthub/editorial/runtime (other component)
+PASS | expected DENY  | actual DENY  | Secrets GetSecretValue supporthub/search/runtime (other component)
+PASS | expected DENY  | actual DENY  | DynamoDB Scan Search counters (other component)
+PASS | expected DENY  | actual DENY  | SNS Publish to Editorial topic (other component)
+
+--- editorial (IAM user supporthub-editorial-service) ---
+PASS | expected ALLOW | actual ALLOW | SQS ReceiveMessage from supporthub-article-events (consumer)
+PASS | expected DENY  | actual DENY  | SQS SendMessage to article events (only Article publishes)
+PASS | expected DENY  | actual DENY  | SQS PurgeQueue
+PASS | expected ALLOW | actual ALLOW | SNS Publish to supporthub-editorial-publication-events
+PASS | expected DENY  | actual DENY  | SNS CreateTopic
+PASS | expected ALLOW | actual ALLOW | Secrets GetSecretValue supporthub/editorial/runtime
+PASS | expected ALLOW | actual ALLOW | Secrets GetSecretValue supporthub/shared/service-hmac
+PASS | expected DENY  | actual DENY  | Secrets GetSecretValue supporthub/article/runtime-config (other component)
+PASS | expected DENY  | actual DENY  | Secrets GetSecretValue supporthub/search/runtime (other component)
+PASS | expected DENY  | actual DENY  | S3 GetObject Article backups (other component)
+PASS | expected DENY  | actual DENY  | Lambda UpdateFunctionCode (deployment is an admin task)
+
+--- search (IAM user search-analytics-service) ---
+PASS | expected ALLOW | actual ALLOW | DynamoDB Scan own counters table
+PASS | expected ALLOW | actual ALLOW | DynamoDB UpdateItem own counters table
+PASS | expected DENY  | actual DENY  | DynamoDB DeleteTable
+PASS | expected ALLOW | actual ALLOW | CloudWatch PutMetricData SupportHub/Search
+PASS | expected ALLOW | actual ALLOW | S3 PutObject exports/ in own bucket
+PASS | expected DENY  | actual DENY  | S3 GetObject Article backups (other component)
+PASS | expected ALLOW | actual ALLOW | Secrets GetSecretValue supporthub/search/runtime
+PASS | expected DENY  | actual DENY  | Secrets GetSecretValue supporthub/editorial/runtime (other component)
+PASS | expected ALLOW | actual ALLOW | S3 GetObject own exports/
+PASS | expected DENY  | actual DENY  | S3 DeleteObject own exports
+PASS | expected DENY  | actual DENY  | S3 ListAllMyBuckets
+FAIL | expected DENY  | actual ALLOW | CloudWatch PutMetricData in another namespace
+PASS | expected DENY  | actual DENY  | SNS Publish to Editorial topic (other component)
+PASS | expected DENY  | actual DENY  | Secrets GetSecretValue supporthub/article/runtime-config (other component)
+PASS | expected DENY  | actual DENY  | SQS ReceiveMessage article events (other component)
+
+--- identity (IAM user supporthub-identity-service) ---
+PASS | expected ALLOW | actual ALLOW | Secrets GetSecretValue supporthub/shared/session
+PASS | expected ALLOW | actual ALLOW | Secrets GetSecretValue supporthub/identity/runtime
+PASS | expected DENY  | actual DENY  | Secrets GetSecretValue supporthub/shared/service-hmac (internal services only)
+PASS | expected ALLOW | actual ALLOW | SNS Publish to supporthub-identity-security-alerts
+PASS | expected DENY  | actual DENY  | SNS Publish to Editorial topic (other component)
+PASS | expected DENY  | actual DENY  | SNS CreateTopic
+PASS | expected DENY  | actual DENY  | S3 ListAllMyBuckets
+PASS | expected DENY  | actual DENY  | IAM ListUsers
+
+Total: 47 passed, 1 failed
+Saved: evidence/final/iam/iam-permission-tests-20261125T185257Z.txt
+  [FAIL] IAM permission tests (see evidence/final/iam)
+
+=====================================================================
+ SupportHub setup summary: 35 passed, 1 failed
+=====================================================================
+  FAIL  IAM permission tests (see evidence/final/iam)
+
+ Frontend:            http://localhost:8188   (Floci mode: own)
+ Floci:               http://localhost:4567
+ Demo accounts file:  infra/floci/.generated/isolated/demo-accounts.txt (password not printed)
+ Logs:                docker compose -f infra/floci/docker-compose.supporthub.yml logs -f <service>
+Exit code: 1
