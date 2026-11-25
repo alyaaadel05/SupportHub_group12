@@ -27,7 +27,7 @@ Example: during exam week, thousands of students search for help articles, but v
 1. **Shared database** – all copies use the same Neon database. More copies means more queries; the database becomes the bottleneck first. Indexes (see `INDEXING-REVIEW.md`) and reading less data per search (see `PAGINATION-REVIEW.md`) reduce this load.
 2. **Rate limiter is per instance** – `express-rate-limit` stores counts in memory, so each copy counts separately. With 3 copies, a user could make up to 3× the limit. A shared store (e.g. Redis) would fix this in a larger deployment.
 3. **Search reads up to 1000 articles per request** – CPU and database cost grow with the number of articles (see `PAGINATION-REVIEW.md`).
-4. **External APIs** – Cloudflare Turnstile and Hugging Face calls are limited by those providers; failures do not stop search, only votes/feedback features.
+4. **External dependencies and sentiment** – Cloudflare Turnstile availability affects protected feedback operations. Sentiment classification runs locally, avoiding hosted inference limits, but its CPU usage increases with feedback volume.
 5. **Batched counters can lose a few seconds of counts** if an instance stops before its next flush. Neon remains the source of truth for analytics; DynamoDB holds live counters only.
 6. **Floci is local only** – the AWS features run on the local emulator; on Vercel they are switched off safely (see `DEPLOYMENT.md`).
 7. **Caches are per instance** – publish/unpublish clears the cache only on the instance that receives the notification. With several copies, another instance can show the old article list for up to 5 s (search) or old dashboard totals for up to 15 s (analytics) before its cache expires. A shared cache (e.g. Redis) would remove this delay.

@@ -1,4 +1,4 @@
-# SupportHub Group 12 - ISOLATED LOCAL LOAD-TEST STACK
+﻿# SupportHub Group 12 - ISOLATED LOCAL LOAD-TEST STACK
 #
 # Everything here is disposable and local:
 #   - Its own Compose project name, container names, images, networks and ports.
@@ -26,6 +26,7 @@ x-test-secrets: &test-secrets
   COOKIE_SECURE: "false"
   NODE_ENV: "development"
   RATE_LIMIT_MAX: "100000"
+  RATE_LIMIT_PROFILE: "loadtest"
   NODE_EXTRA_CA_CERTS: "/certs/ca.crt"
   # Dead-end AWS settings: any AWS call fails immediately and locally.
   AWS_REGION: "us-east-1"
@@ -166,3 +167,4 @@ networks:
   # Only used to publish the four service ports on 127.0.0.1.
   loadtest-public:
     name: supporthub-loadtest-public
+

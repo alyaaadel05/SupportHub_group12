@@ -27,7 +27,7 @@ flowchart LR
   end
 
   ts["Cloudflare Turnstile<br/>(siteverify)"]
-  hf["Hugging Face<br/>sentiment API"]
+  hf["Local sentiment<br/>analysis (Node.js)"]
 
   user --> fe --> proxy
   proxy -- "/api/auth/*" --> idsvc

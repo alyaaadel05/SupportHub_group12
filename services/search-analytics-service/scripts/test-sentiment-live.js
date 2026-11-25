@@ -1,21 +1,52 @@
-// Live Hugging Face sentiment check. Reads HF_INFERENCE_URL / HF_TOKEN from .env.
-// The token is never printed.
-require("dotenv").config();
+"use strict";
+
+// Local sentiment verification.
+// No Hugging Face token, subscription, or external API required.
+
 const { classify } = require("../services/sentimentService");
 
+const cases = [
+  {
+    name: "Positive feedback",
+    text: "Excellent support! I love this helpful article.",
+    expected: "POSITIVE"
+  },
+  {
+    name: "Negative feedback",
+    text: "Terrible support. This article is awful and useless.",
+    expected: "NEGATIVE"
+  },
+  {
+    name: "Neutral feedback",
+    text: "The article contains information about account settings.",
+    expected: "NEUTRAL"
+  }
+];
+
 (async () => {
-  console.log("Hugging Face sentiment live test —", new Date().toISOString());
-  console.log("Model:", process.env.HF_INFERENCE_URL || "(not set)");
+  let passed = 0;
 
-  const positive = await classify("Very clear article, it fixed my problem. Thank you!");
-  console.log("1. Positive feedback :", JSON.stringify(positive));
+  for (const test of cases) {
+    const result = await classify(test.text);
 
-  const negative = await classify("This is confusing and did not help at all.");
-  console.log("2. Negative feedback :", JSON.stringify(negative));
+    const ok =
+      result.status === "completed" &&
+      result.label === test.expected &&
+      Number.isFinite(result.confidence);
 
-  const savedToken = process.env.HF_TOKEN;
-  delete process.env.HF_TOKEN;
-  const off = await classify("Any text");
-  process.env.HF_TOKEN = savedToken;
-  console.log("3. No token (safe)   :", JSON.stringify(off));
-})();
+    console.log(
+      `${ok ? "PASS" : "FAIL"}: ${test.name} -> ${result.label}`
+    );
+
+    if (ok) passed++;
+  }
+
+  console.log(`TOTAL: ${passed}/${cases.length} passed`);
+
+  if (passed !== cases.length) {
+    process.exitCode = 1;
+  }
+})().catch(error => {
+  console.error("FAIL:", error.name);
+  process.exitCode = 1;
+});

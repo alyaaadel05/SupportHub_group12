@@ -1,0 +1,42 @@
+﻿SUPPORTHUB GROUP 12 - ALYAA IAM VERIFICATION
+Date: 2026-11-25
+Environment: Floci local AWS emulator
+Evidence type: Summary transcribed from observed terminal results
+
+IDENTITY SERVICE
+IAM user: supporthub-identity-service
+Policy: SupportHubIdentitySecrets
+Allowed: Identity runtime secret
+Allowed: Shared session secret
+Denied: Editorial secret
+Denied: S3 bucket listing
+Denied: IAM user listing
+RESULT: 5/5 PASSED
+
+ARTICLE SERVICE
+IAM user: supporthub-article-service
+Running container IAM identity: VERIFIED
+
+GENERAL IAM TESTS
+Own S3 bucket listing: ALLOWED
+All S3 bucket listing: DENIED
+SQS queue attribute access: DENIED
+Article runtime secret: ALLOWED
+Editorial runtime secret: DENIED
+RESULT: 5/5 PASSED
+
+S3 OPERATIONS
+PutObject: ALLOWED
+GetObject: ALLOWED, backup content verified
+DeleteObject: DENIED
+RESULT: 3/3 PASSED
+
+SQS OPERATIONS
+SendMessage to demo queue: ALLOWED
+ReceiveMessage from demo queue: DENIED
+RESULT: 2/2 PASSED
+
+TOTAL OBSERVED CHECKS: 15/15 PASSED
+
+Note: This is a manually assembled summary of tests
+observed in the terminal, not a raw automated test log.

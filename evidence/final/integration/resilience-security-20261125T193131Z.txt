@@ -1,0 +1,12 @@
+Test command: node tests/integration/resilience-check.mjs
+Timestamp: 2026-11-25T19:31:31.066Z
+Component / owner: Integration (group)
+Environment: isolated stack supporthub-iso-* (own Floci :4567, own PostgreSQL; no Neon, no team containers)
+Evidence source: real HTTP responses, database queries, AWS CLI and docker stop/start
+
+[PASS] all four services reconnect after the database restart
+    time:     2026-11-25T19:31:31.062Z
+    expected: 200,200,200,200
+    actual:   200,200,200,200
+
+Total: 1 passed, 0 failed

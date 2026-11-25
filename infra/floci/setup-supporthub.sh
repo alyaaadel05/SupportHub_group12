@@ -31,6 +31,9 @@
 #   SUPPORTHUB_DEMO_PASSWORD password for local demo accounts (default:
 #                            generated and stored in .generated/demo-accounts.txt)
 #   SKIP_LAMBDA=true         skip Lambda deployment
+#   SUPPORTHUB_ISOLATED=true never touch supporthub-floci: own Floci on port
+#                            4567, containers supporthub-iso-*, ports
+#                            3205-3208 / 8188, files in .generated/isolated/
 #   SUPPORTHUB_NO_BUILD=true use already-built supporthub-int-* images (offline)
 #
 # Safe to run repeatedly: existing resources, secrets and keys are kept.
@@ -44,8 +47,15 @@ cd "$ROOT" || exit 2
 
 COMPOSE_FILE="infra/floci/docker-compose.supporthub.yml"
 GEN="infra/floci/.generated"
+if [ "${SUPPORTHUB_ISOLATED:-false}" = true ]; then
+  . infra/floci/isolated-env.sh
+  GEN="$SUPPORTHUB_GEN"
+fi
+PREFIX="${SUPPORTHUB_PREFIX:-supporthub-int}"
+PORT_BASE="${SUPPORTHUB_PORT_BASE:-310}"
+FRONTEND_PORT="${SUPPORTHUB_FRONTEND_PORT:-8088}"
 IAM_DIR="infra/iam"
-ENDPOINT="http://localhost:4566"
+ENDPOINT="http://localhost:${SUPPORTHUB_FLOCI_PORT:-4566}"
 REGION="us-east-1"
 ACCOUNT="000000000000"
 RUN_IAM_TESTS=true
@@ -88,7 +98,7 @@ awsx() {
   if [ "$AWS_MODE" = local ]; then
     aws --endpoint-url "$ENDPOINT" --region "$REGION" "$@"
   else
-    docker run --rm -i --network supporthub-int-net \
+    docker run --rm -i --network $PREFIX-net \
       -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_DEFAULT_REGION="$REGION" \
       -v "$ROOT:/repo" -w /repo amazon/aws-cli \
       --endpoint-url http://floci:4566 --region "$REGION" "$@"
@@ -127,14 +137,14 @@ for c in identity article editorial search; do [ -f "$GEN/$c.aws.env" ] || : > "
 # 2. Floci and PostgreSQL
 # ---------------------------------------------------------------------
 step "Starting Floci and PostgreSQL"
-docker network inspect supporthub-int-net >/dev/null 2>&1 || docker network create supporthub-int-net >/dev/null
-if docker container inspect supporthub-floci >/dev/null 2>&1; then
+docker network inspect $PREFIX-net >/dev/null 2>&1 || docker network create $PREFIX-net >/dev/null
+if [ "${SUPPORTHUB_ISOLATED:-false}" != true ] && docker container inspect supporthub-floci >/dev/null 2>&1; then
   FLOCI_MODE=reuse
   [ "$(docker inspect -f '{{.State.Running}}' supporthub-floci)" = true ] || docker start supporthub-floci >/dev/null
-  if ! docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' supporthub-floci | grep -qw supporthub-int-net; then
-    docker network connect --alias floci supporthub-int-net supporthub-floci
+  if ! docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' supporthub-floci | grep -qw $PREFIX-net; then
+    docker network connect --alias floci $PREFIX-net supporthub-floci
   fi
-  ok "reusing existing Floci container supporthub-floci (attached to supporthub-int-net as 'floci')"
+  ok "reusing existing Floci container supporthub-floci (attached to $PREFIX-net as 'floci')"
   docker inspect -f '{{range .Mounts}}{{.Destination}} {{end}}' supporthub-floci | grep -q docker.sock \
     && FLOCI_DOCKER_SOCKET=true || FLOCI_DOCKER_SOCKET=false
   docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' supporthub-floci | grep -q 'IAM_ENFORCEMENT_ENABLED=true' \
@@ -143,7 +153,7 @@ else
   FLOCI_MODE=own; FLOCI_DOCKER_SOCKET=true
   docker compose -f "$COMPOSE_FILE" --profile own-floci up -d floci >/dev/null 2>&1 \
     || die "could not start Floci (is something else using port 4566?)"
-  ok "started own Floci container supporthub-int-floci"
+  ok "started own Floci container $PREFIX-floci"
 fi
 docker compose -f "$COMPOSE_FILE" up -d postgres >/dev/null 2>&1 || die "could not start PostgreSQL"
 
@@ -154,10 +164,10 @@ done
 curl -fsS "$ENDPOINT/_floci/health" >/dev/null 2>&1 && ok "Floci healthy at $ENDPOINT" || die "Floci did not become healthy"
 
 for i in $(seq 1 60); do
-  [ "$(docker inspect -f '{{.State.Health.Status}}' supporthub-int-postgres 2>/dev/null)" = healthy ] && break
+  [ "$(docker inspect -f '{{.State.Health.Status}}' $PREFIX-postgres 2>/dev/null)" = healthy ] && break
   sleep 2
 done
-[ "$(docker inspect -f '{{.State.Health.Status}}' supporthub-int-postgres 2>/dev/null)" = healthy ] \
+[ "$(docker inspect -f '{{.State.Health.Status}}' $PREFIX-postgres 2>/dev/null)" = healthy ] \
   && ok "PostgreSQL healthy (TLS on, no host port)" || die "PostgreSQL did not become healthy"
 
 awsx sts get-caller-identity --query Account --output text >/dev/null 2>&1 \
@@ -194,6 +204,9 @@ step "SNS topic"
 TOPIC_ARN="arn:aws:sns:$REGION:$ACCOUNT:supporthub-editorial-publication-events"
 awsx sns create-topic --name supporthub-editorial-publication-events >/dev/null 2>&1 \
   && ok "SNS topic supporthub-editorial-publication-events" || bad "SNS topic"
+
+awsx sns create-topic --name supporthub-identity-security-alerts >/dev/null 2>&1 \
+  && ok "SNS topic supporthub-identity-security-alerts" || bad "Identity SNS topic"
 
 step "DynamoDB table"
 if awsx dynamodb describe-table --table-name supporthub-search-counters >/dev/null 2>&1; then
@@ -258,7 +271,8 @@ ensure_user() { # component user policy-name=file ...
   ok "IAM user $user ($# policies, key in $GEN/$comp.aws.env)"
 }
 ensure_user identity  supporthub-identity-service \
-  SupportHubIdentitySecrets=$IAM_DIR/identity-secrets-policy.json
+  SupportHubIdentitySecrets=$IAM_DIR/identity-secrets-policy.json \
+  SupportHubIdentitySNSPublisher=$IAM_DIR/identity-sns-policy.json
 ensure_user article   supporthub-article-service \
   SupportHubArticleS3Policy=$IAM_DIR/article-s3-policy.json \
   SupportHubArticleSQSPublisher=$IAM_DIR/article-sqs-policy.json \
@@ -337,13 +351,13 @@ wait_http() { # name url
   bad "$1 health ($2)"; return 1
 }
 step "Health checks"
-wait_http "Identity"           http://127.0.0.1:3106/api/health
-wait_http "Article"            http://127.0.0.1:3105/api/health
-wait_http "Editorial"          http://127.0.0.1:3107/api/health
-wait_http "Search & Analytics" http://127.0.0.1:3108/api/health
-wait_http "Frontend proxy"     http://127.0.0.1:8088/index.html
-wait_http "Proxy -> Identity CSRF" http://127.0.0.1:8088/api/auth/csrf
-for w in supporthub-int-article-outbox-worker supporthub-int-editorial-article-worker supporthub-int-editorial-publication-worker; do
+wait_http "Identity"           http://127.0.0.1:${PORT_BASE}6/api/health
+wait_http "Article"            http://127.0.0.1:${PORT_BASE}5/api/health
+wait_http "Editorial"          http://127.0.0.1:${PORT_BASE}7/api/health
+wait_http "Search & Analytics" http://127.0.0.1:${PORT_BASE}8/api/health
+wait_http "Frontend proxy"     http://127.0.0.1:${FRONTEND_PORT}/index.html
+wait_http "Proxy -> Identity CSRF" http://127.0.0.1:${FRONTEND_PORT}/api/auth/csrf
+for w in $PREFIX-article-outbox-worker $PREFIX-editorial-article-worker $PREFIX-editorial-publication-worker; do
   [ "$(docker inspect -f '{{.State.Running}}' "$w" 2>/dev/null)" = true ] && ok "worker $w running" || bad "worker $w running"
 done
 
@@ -358,10 +372,10 @@ if [ -z "${SUPPORTHUB_DEMO_PASSWORD:-}" ]; then
     SUPPORTHUB_DEMO_PASSWORD="Demo-$(rand_hex 8)"
   fi
 fi
-HASH="$(docker exec -e P="$SUPPORTHUB_DEMO_PASSWORD" supporthub-int-identity \
+HASH="$(docker exec -e P="$SUPPORTHUB_DEMO_PASSWORD" $PREFIX-identity \
   node -e 'console.log(require("bcryptjs").hashSync(process.env.P, 12))' 2>/dev/null)"
 if [ -n "$HASH" ]; then
-  docker exec -i supporthub-int-postgres psql -q -U supporthub -d supporthub -v ON_ERROR_STOP=1 -v h="$HASH" >/dev/null <<'SQL' \
+  docker exec -i $PREFIX-postgres psql -q -U supporthub -d supporthub -v ON_ERROR_STOP=1 -v h="$HASH" >/dev/null <<'SQL' \
     && ok "demo accounts present (author, author2, editor, editor2, admin @supporthub.test)" || bad "demo accounts"
 INSERT INTO users (name, email, password_hash, role) VALUES
   ('Demo Author',   'author@supporthub.test',  :'h', 'author'),
@@ -400,7 +414,7 @@ echo " SupportHub setup summary: $PASS passed, $FAIL failed"
 echo "====================================================================="
 printf '  %s\n' "${RESULTS[@]}" | grep FAIL || true
 echo
-echo " Frontend:            http://localhost:8088   (Floci mode: $FLOCI_MODE)"
+echo " Frontend:            http://localhost:${FRONTEND_PORT}   (Floci mode: $FLOCI_MODE)"
 echo " Floci:               $ENDPOINT"
 echo " Demo accounts file:  $GEN/demo-accounts.txt (password not printed)"
 echo " Logs:                docker compose -f $COMPOSE_FILE logs -f <service>"

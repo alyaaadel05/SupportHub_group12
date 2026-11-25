@@ -1,0 +1,68 @@
+Test command: node tests/integration/resilience-check.mjs
+Timestamp: 2026-11-25T19:25:33.699Z
+Component / owner: Editorial (Salma)
+Environment: isolated stack supporthub-iso-* (own Floci :4567, own PostgreSQL; no Neon, no team containers)
+Evidence source: real HTTP responses, database queries, AWS CLI and docker stop/start
+
+[PASS] review queue while AWS (Floci) is down
+    time:     2026-11-25T19:20:11.882Z
+    expected: HTTP 200
+    actual:   HTTP 200
+[PASS] two editors decide the same article at the same time
+    time:     2026-11-25T19:20:40.801Z
+    expected: exactly one 201, one decision, matching article status
+    actual:   HTTP 201,409, decisions=1, article=approved
+[PASS] 5 concurrent publish requests
+    time:     2026-11-25T19:20:46.055Z
+    expected: published once, 1 publication event, no 5xx
+    actual:   HTTP 409,200,409,409,409, article=published, events=1
+[PASS] decide an already published article
+    time:     2026-11-25T19:20:46.101Z
+    expected: HTTP 409
+    actual:   HTTP 409
+[PASS] author tries to approve
+    time:     2026-11-25T19:20:46.148Z
+    expected: HTTP 403
+    actual:   HTTP 403
+[PASS] reject without a comment
+    time:     2026-11-25T19:20:50.244Z
+    expected: HTTP 400, still pending
+    actual:   HTTP 400, article=in_review
+[PASS] invalid decision value
+    time:     2026-11-25T19:20:50.287Z
+    expected: HTTP 400
+    actual:   HTTP 400
+[PASS] decision without CSRF token
+    time:     2026-11-25T19:20:50.332Z
+    expected: HTTP 403
+    actual:   HTTP 403
+[PASS] the same SQS event delivered 3 more times
+    time:     2026-11-25T19:21:12.324Z
+    expected: 1 inbox row, 1 review
+    actual:   inbox=1, reviews=1
+[PASS] valid event is processed while a malformed one is in the queue
+    time:     2026-11-25T19:21:21.349Z
+    expected: article queued
+    actual:   article 79 queued
+[PASS] malformed event goes to the dead-letter queue after 5 receives
+    time:     2026-11-25T19:23:59.948Z
+    expected: DLQ count increases
+    actual:   before=6, after=7
+[PASS] event consumer stopped, article submitted, consumer restarted
+    time:     2026-11-25T19:24:33.731Z
+    expected: 0 reviews while down, 1 after restart
+    actual:   while down=0, after=1
+[PASS] Article Service down during approval, then retried
+    time:     2026-11-25T19:24:44.315Z
+    expected: safe 5xx, then one consistent approval
+    actual:   down HTTP 500, retry HTTP 201, article=approved, decisions=1
+[PASS] Search Service down during publication, then Search sync job run
+    time:     2026-11-25T19:24:55.192Z
+    expected: published; delivery parked needs_reconciliation; indexed after the sync job
+    actual:   publish HTTP 200, article=published, outbox=needs_reconciliation, missing before sync=true, indexed after sync=true
+[PASS] internal job endpoint with a wrong secret
+    time:     2026-11-25T19:24:55.241Z
+    expected: rejected (401/403/404)
+    actual:   HTTP 401
+
+Total: 15 passed, 0 failed

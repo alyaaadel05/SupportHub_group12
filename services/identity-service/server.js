@@ -8,6 +8,8 @@ const { rateLimit } = require("express-rate-limit");
 const { generalLimit } = require("./config/rateLimitProfiles");
 const { securityEventLogger, logSecurityEvent } = require("./middleware/securityEvents");
 
+const { securityAlertPublisher } = require("./services/securityAlerts");
+
 const pool = require("./db/pool");
 
 const {
@@ -50,6 +52,7 @@ if (production) {
 
 app.use(helmet());
 app.use(securityEventLogger);
+app.use(securityAlertPublisher());
 
 // ==========================================
 // 2. CORS

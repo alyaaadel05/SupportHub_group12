@@ -1,0 +1,64 @@
+Test command: node tests/integration/resilience-check.mjs
+Timestamp: 2026-11-25T19:18:57.854Z
+Component / owner: Editorial (Salma)
+Environment: isolated stack supporthub-iso-* (own Floci :4567, own PostgreSQL; no Neon, no team containers)
+Evidence source: real HTTP responses, database queries, AWS CLI and docker stop/start
+
+[PASS] two editors decide the same article at the same time
+    time:     2026-11-25T19:14:23.892Z
+    expected: exactly one 201, one decision, matching article status
+    actual:   HTTP 201,409, decisions=1, article=approved
+[PASS] 5 concurrent publish requests
+    time:     2026-11-25T19:14:28.944Z
+    expected: published once, 1 publication event, no 5xx
+    actual:   HTTP 200,409,409,409,409, article=published, events=1
+[PASS] decide an already published article
+    time:     2026-11-25T19:14:28.954Z
+    expected: HTTP 409
+    actual:   HTTP 409
+[PASS] author tries to approve
+    time:     2026-11-25T19:14:28.960Z
+    expected: HTTP 403
+    actual:   HTTP 403
+[PASS] reject without a comment
+    time:     2026-11-25T19:14:33.804Z
+    expected: HTTP 400, still pending
+    actual:   HTTP 400, article=in_review
+[PASS] invalid decision value
+    time:     2026-11-25T19:14:33.815Z
+    expected: HTTP 400
+    actual:   HTTP 400
+[PASS] decision without CSRF token
+    time:     2026-11-25T19:14:33.822Z
+    expected: HTTP 403
+    actual:   HTTP 403
+[PASS] the same SQS event delivered 3 more times
+    time:     2026-11-25T19:14:55.093Z
+    expected: 1 inbox row, 1 review
+    actual:   inbox=1, reviews=1
+[PASS] valid event is processed while a malformed one is in the queue
+    time:     2026-11-25T19:15:04.280Z
+    expected: article queued
+    actual:   article 41 queued
+[PASS] malformed event goes to the dead-letter queue after 5 receives
+    time:     2026-11-25T19:17:40.878Z
+    expected: DLQ count increases
+    actual:   before=5, after=6
+[PASS] event consumer stopped, article submitted, consumer restarted
+    time:     2026-11-25T19:17:50.777Z
+    expected: 0 reviews while down, 1 after restart
+    actual:   while down=0, after=1
+[PASS] Article Service down during approval, then retried
+    time:     2026-11-25T19:18:00.128Z
+    expected: safe 5xx, then one consistent approval
+    actual:   down HTTP 500, retry HTTP 201, article=approved, decisions=1
+[FAIL] Search Service down during publication
+    time:     2026-11-25T19:18:57.842Z
+    expected: article published, indexed after recovery
+    actual:   publish HTTP 200, article=published, indexed=false via signed cron retry job (HTTP 200)
+[PASS] internal job endpoint with a wrong secret
+    time:     2026-11-25T19:18:57.852Z
+    expected: rejected (401/403/404)
+    actual:   HTTP 401
+
+Total: 13 passed, 1 failed

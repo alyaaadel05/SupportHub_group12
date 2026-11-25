@@ -35,4 +35,4 @@ The response never includes passwords, connection strings or other secrets.
 4. After fixing, call `/api/health` again and confirm it returns `200` and `"database":"connected"`.
 
 ## 6. Limitations
-- It checks the database only. It does **not** check the Article Service, Cloudflare Turnstile or Hugging Face; if those are down, the related features return their own errors (e.g. 502/503) while search keeps working.
+- It checks the database only. It does **not** check the Article Service or Cloudflare Turnstile; external failures can affect their dependent operations while search continues working. Sentiment classification runs locally without a hosted inference API.

@@ -15,7 +15,8 @@ const ROOT = path.resolve(__dirname, "..", "..");
 const BASE = (process.env.BASE_URL || "http://localhost:8088").replace(/\/$/, "");
 const PASSWORD = process.env.SUPPORTHUB_DEMO_PASSWORD ||
   fs.readFileSync(path.join(ROOT, "infra/floci/.generated/demo-accounts.txt"), "utf8").match(/^password=(.+)$/m)[1].trim();
-const OUT = path.join(ROOT, "evidence/final/frontend");
+// SMOKE_OUT_DIR keeps new screenshots away from earlier evidence.
+const OUT = path.resolve(ROOT, process.env.SMOKE_OUT_DIR || "evidence/final/frontend");
 fs.mkdirSync(OUT, { recursive: true });
 
 const lines = [];
@@ -24,7 +25,7 @@ const log = t => { lines.push(t); console.log(t); };
 const check = (name, ok, detail = "") => { ok ? pass++ : fail++; log(`${ok ? "PASS" : "FAIL"} | ${name}${detail ? " | " + detail : ""}`); };
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {});
   const problems = [];
 
   async function newPage(width = 1280) {

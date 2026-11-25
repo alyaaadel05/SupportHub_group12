@@ -11,7 +11,8 @@
       "Sid": "SearchMetricsOnly",
       "Effect": "Allow",
       "Action": "cloudwatch:PutMetricData",
-      "Resource": "*"
+      "Resource": "*",
+      "Condition": { "StringEqualsIfExists": { "cloudwatch:namespace": "SupportHub/Search" } }
     },
     {
       "Sid": "AnalyticsExportsObjects",

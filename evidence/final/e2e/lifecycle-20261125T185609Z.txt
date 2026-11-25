@@ -1,0 +1,72 @@
+SupportHub end-to-end lifecycle test - 2026-11-25T18:56:09.394Z
+Base URL: http://localhost:8188 (same-origin proxy)   Unique search token: lifecycle20261125t185609z
+
+== 1. Service health through the stack
+PASS | identity reachable via proxy (/api/auth/csrf) | HTTP 200
+PASS | article reachable via proxy (/api/categories) | HTTP 200
+PASS | search reachable via proxy (/api/public/articles?q=health) | HTTP 200
+
+== 2. Author: login, create, edit, versions, duplicates, S3 backup, submit
+PASS | registration: 201 created, or refused (400) when Turnstile cannot be verified | HTTP 201 Registration successful
+PASS | registration WITHOUT Turnstile token -> 400 (rejected before any Cloudflare call) | HTTP 400 Turnstile verification failed
+PASS | wrong password -> 401 (LOGIN_FAILED audited) | HTTP 401
+PASS | author login (shared Identity session) | HTTP 200, role=author
+PASS | GET /api/auth/me returns author
+PASS | categories available | 4 categories
+PASS | POST /api/articles creates draft (201) | HTTP 201, id=1
+PASS | PATCH /api/articles/:id edits draft (version 2) | HTTP 200
+PASS | GET versions lists 2 versions | 2 versions
+PASS | GET versions/compare | HTTP 200
+PASS | POST check-duplicates finds own similar draft | HTTP 200, 1 matches
+PASS | S3: export version backup (Article -> S3 via own IAM key) | HTTP 200, key=articles/1/versions/2.json
+PASS | S3: retrieve version backup | HTTP 200
+PASS | POST /api/articles/:id/submit -> in_review | HTTP 200
+PASS | transactional outbox row written
+
+== 3. Asynchronous: outbox worker -> SQS -> Editorial consumer
+PASS | editor login | HTTP 200
+PASS | article appears in Editorial review queue via SQS | after 4.5 s
+     outbox: published attempts=1
+     editorial inbox: article.submitted article=1
+
+== 4. Security checks (backend enforcement)
+PASS | unauthenticated create -> 401 | HTTP 401
+PASS | author cannot approve (role) -> 403 | HTTP 403
+PASS | other author cannot read draft (ownership) -> 403 | HTTP 403
+PASS | other author cannot read versions -> 403 | HTTP 403
+PASS | wrong CSRF token -> 403 | HTTP 403
+PASS | foreign Origin -> 403 | HTTP 403
+PASS | SQL injection in ID -> 400 | HTTP 400
+PASS | invalid input -> 400 | HTTP 400
+PASS | publish before approval (invalid transition) -> 409 | HTTP 409
+
+== 5. Editor approves and publishes; SNS -> Lambda; Search indexing
+PASS | editor approves (201) | HTTP 201 
+PASS | editor publishes (Editorial -> Article HMAC -> Search HMAC) | HTTP 200 
+PASS | reader finds article in public search | after 0.1 s
+PASS | reader views published article (view recorded) | HTTP 200
+PASS | SNS publication event published by Editorial worker | after 1.7 s
+PASS | Lambda (SNS subscriber) recorded publication receipt | after 0.6 s
+
+== 6. Reader feedback and analytics
+PASS | helpfulness vote accepted, or safely refused when Turnstile is unreachable | HTTP 200 
+PASS | anonymous vote -> 401 | HTTP 401
+PASS | author cannot open analytics -> 403 | HTTP 403
+PASS | admin analytics overview | searches=2, views=1
+PASS | DynamoDB live counters readable | HTTP 200
+PASS | S3 analytics CSV export (Search -> own bucket) | HTTP 201 analytics-20261125T185637Z.csv
+
+== 7. Rejection path, editorial history, outdated flag
+PASS | second article reaches queue | after 2.1 s
+PASS | editor rejects with comment | HTTP 201 
+PASS | rejected article returns to draft for author | status=draft
+PASS | editorial history available | HTTP 200
+PASS | editor flags published article as outdated | HTTP 201
+PASS | editor resolves outdated flag | HTTP 200 
+
+== 8. Audit / security-event records
+     audit_logs by action: LOGIN_FAILED=1, USER_LOGIN=4, USER_REGISTERED=1, article.create=2, article.submit=2, article.update=1, article.version.export=1
+
+Total: 47 passed, 0 failed
+Registration note: dummy-token registration HTTP 201 Registration successful. Registered.
+Vote result note: HTTP 200 (502 = Cloudflare Turnstile host not reachable from this environment)

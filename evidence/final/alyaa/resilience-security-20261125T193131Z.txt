@@ -1,0 +1,80 @@
+Test command: node tests/integration/resilience-check.mjs
+Timestamp: 2026-11-25T19:31:31.063Z
+Component / owner: Article Management + Identity (Alyaa)
+Environment: isolated stack supporthub-iso-* (own Floci :4567, own PostgreSQL; no Neon, no team containers)
+Evidence source: real HTTP responses, database queries, AWS CLI and docker stop/start
+
+[PASS] 10 concurrent submissions of one draft
+    time:     2026-11-25T19:26:00.027Z
+    expected: exactly 1 outbox event
+    actual:   1 x HTTP 200, statuses=200,409,409,409,409,409,409,409,409,409, outbox rows=1
+[PASS] 30 concurrent article creations
+    time:     2026-11-25T19:26:00.256Z
+    expected: 30 x 201, 30 different IDs
+    actual:   30 x 201, 30 unique
+[PASS] 10 concurrent edits keep version history consistent
+    time:     2026-11-25T19:26:00.591Z
+    expected: no 5xx; version numbers unique
+    actual:   10 x 200, 0 x 5xx, versions total/distinct=11/11
+[PASS] restore an earlier version of an own draft
+    time:     2026-11-25T19:26:00.697Z
+    expected: HTTP 200
+    actual:   HTTP 200
+[PASS] another author deletes the draft (ownership)
+    time:     2026-11-25T19:26:01.042Z
+    expected: HTTP 403, article kept
+    actual:   HTTP 403, status=draft
+[PASS] owner deletes own draft
+    time:     2026-11-25T19:26:01.095Z
+    expected: HTTP 200 or 204
+    actual:   HTTP 204
+[PASS] submit while AWS (Floci) is down
+    time:     2026-11-25T19:26:11.901Z
+    expected: HTTP 200, event kept pending, API alive
+    actual:   HTTP 200, outbox pending attempts=0
+[PASS] S3 backup while AWS is down
+    time:     2026-11-25T19:26:21.997Z
+    expected: controlled 5xx, no crash
+    actual:   HTTP 502
+[PASS] Article API still serves requests during the outage
+    time:     2026-11-25T19:26:22.051Z
+    expected: HTTP 200
+    actual:   HTTP 200
+[PASS] recovery after AWS returns: pending event is published automatically
+    time:     2026-11-25T19:26:38.463Z
+    expected: outbox published, article in review queue
+    actual:   floci healthy=true, outbox=published, queued=true
+[PASS] internal Article API, no signature
+    time:     2026-11-25T19:26:38.500Z
+    expected: HTTP 401
+    actual:   HTTP 401
+[PASS] internal Article API, forged signature
+    time:     2026-11-25T19:26:38.543Z
+    expected: HTTP 401
+    actual:   HTTP 401
+[PASS] internal Article API, expired timestamp
+    time:     2026-11-25T19:26:38.581Z
+    expected: HTTP 401
+    actual:   HTTP 401
+[PASS] password stored as bcrypt cost 12
+    time:     2026-11-25T19:26:38.713Z
+    expected: $2?$12$ prefix
+    actual:   $2a$12$
+[PASS] login without CSRF token
+    time:     2026-11-25T19:26:38.752Z
+    expected: HTTP 403
+    actual:   HTTP 403
+[PASS] registration body asks for role=admin
+    time:     2026-11-25T19:26:39.756Z
+    expected: 201, stored role is not editor/admin
+    actual:   HTTP 201 , stored role=author
+[PASS] old session cookie after logout, on all four services
+    time:     2026-11-25T19:26:40.391Z
+    expected: 401 everywhere
+    actual:   logout HTTP 200; me/articles/editorial/analytics=401,401,401,401
+[PASS] failed login publishes an SNS security alert with the Identity IAM user
+    time:     2026-11-25T19:26:53.078Z
+    expected: event authentication_failed delivered, no personal data
+    actual:   login HTTP 401, message keys=event,service,timestamp, event=authentication_failed
+
+Total: 18 passed, 0 failed

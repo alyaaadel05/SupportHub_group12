@@ -14,11 +14,12 @@ set -uo pipefail
 export MSYS_NO_PATHCONV=1
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; cd "$ROOT" || exit 2
 export AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_DEFAULT_REGION=us-east-1
-EP=http://localhost:4566; ACC=000000000000
-P="${CONTAINER_PREFIX:-supporthub-int-}"
+if [ "${SUPPORTHUB_ISOLATED:-false}" = true ]; then . infra/floci/isolated-env.sh; fi
+EP="http://localhost:${SUPPORTHUB_FLOCI_PORT:-4566}"; ACC=000000000000
+P="${CONTAINER_PREFIX:-${SUPPORTHUB_PREFIX:-supporthub-int}-}"
 if command -v aws >/dev/null; then A() { aws --endpoint-url "$EP" "$@"; }
-else A() { local a=() x; for x in "$@"; do a+=("${x//localhost:4566/floci:4566}"); done
-  docker run --rm -i --network supporthub-int-net -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_DEFAULT_REGION \
+else A() { local a=() x; for x in "$@"; do a+=("${x//"${EP#http://}"/floci:4566}"); done
+  docker run --rm -i --network "${P}net" -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_DEFAULT_REGION \
     amazon/aws-cli --endpoint-url http://floci:4566 "${a[@]}"; }; fi
 mkdir -p evidence/final/aws
 OUT="evidence/final/aws/aws-usage-$(date -u +%Y%m%dT%H%M%SZ).txt"
