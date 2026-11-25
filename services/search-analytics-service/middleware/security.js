@@ -22,8 +22,23 @@ function requireReviewer(req, res, next) {
   next();
 }
 
+// FRONTEND_ORIGIN may list several exact origins separated by commas, for
+// example "http://localhost:8080,http://127.0.0.1:8080,https://supporthub-group12.pages.dev".
+// This matches how the Identity and Article services read the same variable.
+// Every entry is an exact match: no wildcards, and a missing Origin is rejected.
+function allowedOrigins(value = process.env.FRONTEND_ORIGIN) {
+  return String(value || "")
+    .split(",")
+    .map(origin => origin.trim())
+    .filter(Boolean);
+}
+
+function isAllowedOrigin(origin, value = process.env.FRONTEND_ORIGIN) {
+  return typeof origin === "string" && allowedOrigins(value).includes(origin);
+}
+
 function requireBrowserWrite(req, res, next) {
-  if (req.get("origin") !== process.env.FRONTEND_ORIGIN)
+  if (!isAllowedOrigin(req.get("origin")))
     return res.status(403).json({ error: "Origin not allowed" });
   const expected = req.session?.csrfToken;
   const actual = req.get("x-csrf-token");
@@ -63,5 +78,5 @@ function noStore(req, res, next) {
   res.set("Pragma", "no-cache");
   next();
 }
-module.exports = { sessionUser, requireLogin, requireReviewer, requireBrowserWrite,
+module.exports = { allowedOrigins, isAllowedOrigin, sessionUser, requireLogin, requireReviewer, requireBrowserWrite,
   makeSignature, requireEditorialSignature, noStore };

@@ -67,7 +67,7 @@ Not set on purpose:
 |---|---|
 | `PORT` | Set by Vercel |
 | `AWS_*`, `DYNAMODB_COUNTERS_TABLE`, `CLOUDWATCH_NAMESPACE`, `S3_EXPORT_BUCKET` | AWS runs on Floci (local emulator). Without these, counters/metrics are skipped and exports return 503; search, voting and analytics still work from Neon. On the live dashboard the DynamoDB and S3 sections show "unavailable"; they are demonstrated on the local dashboard. |
-| `HF_INFERENCE_URL`, `HF_TOKEN` | Hugging Face returns 402 (no free credits); sentiment would be `unavailable` anyway (see `SECURITY.md` S20). |
+| Sentiment analysis | Runs locally using the Node.js `sentiment` package. No Hugging Face token, paid API or internet connection is required for sentiment classification. |
 
 ## Problems found during deployment
 

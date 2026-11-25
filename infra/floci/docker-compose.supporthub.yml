@@ -23,13 +23,13 @@
 # No secret is written in this file. Each service gets ONLY its own IAM
 # access key (env_file) and reads everything else from AWS Secrets Manager.
 
-name: supporthub-int
+name: ${SUPPORTHUB_PREFIX:-supporthub-int}
 
 x-service-common: &service-common
   restart: unless-stopped
   networks: [supporthub-int-net]
   volumes:
-    - ./.generated/certs/ca.crt:/certs/ca.crt:ro
+    - ${SUPPORTHUB_GEN_DIR:-./.generated}/certs/ca.crt:/certs/ca.crt:ro
 
 x-common-env: &common-env
   AWS_REGION: us-east-1
@@ -37,7 +37,7 @@ x-common-env: &common-env
   AWS_SECRETS_ENABLED: "true"
   SECRETS_REQUIRED: "true"
   NODE_EXTRA_CA_CERTS: /certs/ca.crt
-  FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:8088}
+  FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:${SUPPORTHUB_FRONTEND_PORT:-8088}}
   COOKIE_SECURE: "false"
   NODE_ENV: development
   # production = restrictive limits (default); loadtest = relaxed limits for k6
@@ -46,9 +46,9 @@ x-common-env: &common-env
 services:
   floci:
     image: floci/floci:latest
-    container_name: supporthub-int-floci
+    container_name: ${SUPPORTHUB_PREFIX:-supporthub-int}-floci
     ports:
-      - "127.0.0.1:4566:4566"
+      - "127.0.0.1:${SUPPORTHUB_FLOCI_PORT:-4566}:4566"
     environment:
       FLOCI_STORAGE_MODE: persistent
       FLOCI_STORAGE_PERSISTENT_PATH: /app/data
@@ -68,7 +68,7 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    container_name: supporthub-int-postgres
+    container_name: ${SUPPORTHUB_PREFIX:-supporthub-int}-postgres
     environment:
       POSTGRES_USER: supporthub
       POSTGRES_DB: supporthub
@@ -86,7 +86,7 @@ services:
         -c max_connections=200
     volumes:
       - pg-data:/var/lib/postgresql/data
-      - ./.generated/certs:/certs-src:ro
+      - ${SUPPORTHUB_GEN_DIR:-./.generated}/certs:/certs-src:ro
       - ./db/00-core-schema.sql:/docker-entrypoint-initdb.d/00-core-schema.sql:ro
       - ../../services/article-service/migrations/001_article_event_outbox.sql:/docker-entrypoint-initdb.d/10-article-001.sql:ro
       - ../../services/article-service/migrations/002_article_transition_idempotency.sql:/docker-entrypoint-initdb.d/11-article-002.sql:ro
@@ -113,13 +113,15 @@ services:
     <<: *service-common
     build: ../../services/identity-service
     image: supporthub-int-identity:local
-    container_name: supporthub-int-identity
-    env_file: [./.generated/identity.aws.env]
+    container_name: ${SUPPORTHUB_PREFIX:-supporthub-int}-identity
+    env_file: ["${SUPPORTHUB_GEN_DIR:-./.generated}/identity.aws.env"]
     environment:
       <<: *common-env
       PORT: "3003"
       SECRET_IDS: supporthub/shared/session,supporthub/shared/database,supporthub/identity/runtime
-    ports: ["127.0.0.1:3106:3003"]
+      IDENTITY_SNS_ENABLED: "true"
+      IDENTITY_SNS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:supporthub-identity-security-alerts
+    ports: ["127.0.0.1:${SUPPORTHUB_PORT_BASE:-310}6:3003"]
     depends_on:
       postgres: { condition: service_healthy }
 
@@ -127,8 +129,8 @@ services:
     <<: *service-common
     build: ../../services/article-service
     image: supporthub-int-article:local
-    container_name: supporthub-int-article
-    env_file: [./.generated/article.aws.env]
+    container_name: ${SUPPORTHUB_PREFIX:-supporthub-int}-article
+    env_file: ["${SUPPORTHUB_GEN_DIR:-./.generated}/article.aws.env"]
     environment:
       <<: *common-env
       PORT: "3001"
@@ -136,16 +138,16 @@ services:
       AWS_SECRET_NAME: supporthub/article/runtime-config
       AWS_S3_BUCKET: supporthub-article-backups
       SQS_QUEUE_URL: http://floci:4566/000000000000/supporthub-article-events
-    ports: ["127.0.0.1:3105:3001"]
+    ports: ["127.0.0.1:${SUPPORTHUB_PORT_BASE:-310}5:3001"]
     depends_on:
       postgres: { condition: service_healthy }
 
   article-outbox-worker:
     <<: *service-common
     image: supporthub-int-article:local
-    container_name: supporthub-int-article-outbox-worker
+    container_name: ${SUPPORTHUB_PREFIX:-supporthub-int}-article-outbox-worker
     command: ["node", "start.js", "services/articleOutboxScheduler.js"]
-    env_file: [./.generated/article.aws.env]
+    env_file: ["${SUPPORTHUB_GEN_DIR:-./.generated}/article.aws.env"]
     environment:
       <<: *common-env
       SECRET_IDS: supporthub/shared/database
@@ -157,24 +159,24 @@ services:
     <<: *service-common
     build: ../../services/editorial-service
     image: supporthub-int-editorial:local
-    container_name: supporthub-int-editorial
-    env_file: [./.generated/editorial.aws.env]
+    container_name: ${SUPPORTHUB_PREFIX:-supporthub-int}-editorial
+    env_file: ["${SUPPORTHUB_GEN_DIR:-./.generated}/editorial.aws.env"]
     environment:
       <<: *common-env
       PORT: "3002"
       SECRET_IDS: supporthub/shared/session,supporthub/shared/service-hmac,supporthub/shared/database,supporthub/editorial/runtime
       ARTICLE_SERVICE_URL: http://article:3001
       SEARCH_SERVICE_URL: http://search:3004
-    ports: ["127.0.0.1:3107:3002"]
+    ports: ["127.0.0.1:${SUPPORTHUB_PORT_BASE:-310}7:3002"]
     depends_on:
       postgres: { condition: service_healthy }
 
   editorial-article-worker:
     <<: *service-common
     image: supporthub-int-editorial:local
-    container_name: supporthub-int-editorial-article-worker
+    container_name: ${SUPPORTHUB_PREFIX:-supporthub-int}-editorial-article-worker
     command: ["node", "start.js", "workers/articleEventConsumer.js"]
-    env_file: [./.generated/editorial.aws.env]
+    env_file: ["${SUPPORTHUB_GEN_DIR:-./.generated}/editorial.aws.env"]
     environment:
       <<: *common-env
       SECRET_IDS: supporthub/shared/service-hmac,supporthub/shared/database
@@ -189,9 +191,9 @@ services:
   editorial-publication-worker:
     <<: *service-common
     image: supporthub-int-editorial:local
-    container_name: supporthub-int-editorial-publication-worker
+    container_name: ${SUPPORTHUB_PREFIX:-supporthub-int}-editorial-publication-worker
     command: ["node", "start.js", "workers/publicationEventPublisher.js"]
-    env_file: [./.generated/editorial.aws.env]
+    env_file: ["${SUPPORTHUB_GEN_DIR:-./.generated}/editorial.aws.env"]
     environment:
       <<: *common-env
       SECRET_IDS: supporthub/shared/database
@@ -204,8 +206,8 @@ services:
     <<: *service-common
     build: ../../services/search-analytics-service
     image: supporthub-int-search:local
-    container_name: supporthub-int-search
-    env_file: [./.generated/search.aws.env]
+    container_name: ${SUPPORTHUB_PREFIX:-supporthub-int}-search
+    env_file: ["${SUPPORTHUB_GEN_DIR:-./.generated}/search.aws.env"]
     environment:
       <<: *common-env
       PORT: "3004"
@@ -217,13 +219,13 @@ services:
       S3_EXPORT_BUCKET: supporthub-search-analytics-exports
       REQUIRE_TURNSTILE_FOR_VOTES: ${REQUIRE_TURNSTILE_FOR_VOTES:-true}
       DB_POOL_MAX: "10"
-    ports: ["127.0.0.1:3108:3004"]
+    ports: ["127.0.0.1:${SUPPORTHUB_PORT_BASE:-310}8:3004"]
     depends_on:
       postgres: { condition: service_healthy }
 
   frontend:
     image: node:22-alpine
-    container_name: supporthub-int-frontend
+    container_name: ${SUPPORTHUB_PREFIX:-supporthub-int}-frontend
     working_dir: /app
     command: ["node", "dev-server.js"]
     environment:
@@ -233,13 +235,13 @@ services:
       SEARCH_URL: http://search:3004
     volumes:
       - ../../frontend:/app:ro
-    ports: ["127.0.0.1:8088:8080"]
+    ports: ["127.0.0.1:${SUPPORTHUB_FRONTEND_PORT:-8088}:8080"]
     networks: [supporthub-int-net]
     restart: unless-stopped
 
 networks:
   supporthub-int-net:
-    name: supporthub-int-net
+    name: ${SUPPORTHUB_PREFIX:-supporthub-int}-net
 
 volumes:
   floci-data:

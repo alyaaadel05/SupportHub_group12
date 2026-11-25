@@ -1,0 +1,60 @@
+SupportHub AWS usage evidence - 2026-11-25T19:34:34Z
+Floci: 2.5.0
+
+=== ALYAA - Article & Category Management (IAM user supporthub-article-service)
+[S3] supporthub-article-backups objects (version backups written by POST /versions/:id/export):
+    articles/1/versions/2.json	464
+    articles/iam-test/probe.json	32
+[SQS] supporthub-article-events (outbox publisher) attributes:
+    ATTRIBUTES	0	{"deadLetterTargetArn":"arn:aws:sqs:us-east-1:000000000000:supporthub-article-events-dlq","maxReceiveCount":"5"}
+[SQS] outbox rows published to SQS (database):
+    published|136
+[Secrets Manager] secrets loaded by the Article API at start-up (names only):
+    [secrets] supporthub/article/runtime-config: loaded 0 key(s)
+    [secrets] supporthub/shared/database: loaded 1 key(s) (DATABASE_URL)
+    [secrets] supporthub/shared/service-hmac: loaded 1 key(s) (SERVICE_SHARED_SECRET)
+    [secrets] supporthub/shared/session: loaded 1 key(s) (SESSION_SECRET)
+[IAM] inline policies:
+    POLICYNAMES	SupportHubArticleS3Policy
+    POLICYNAMES	SupportHubArticleSQSPublisher
+    POLICYNAMES	SupportHubArticleSecrets
+
+=== SALMA - Editorial Workflow & Publication (IAM user supporthub-editorial-service)
+[SQS] events consumed into editorial_event_inbox (database):
+    article.submitted|136
+[SNS] supporthub-editorial-publication-events subscriptions:
+    lambda	arn:aws:lambda:us-east-1:000000000000:function:supporthub-editorial-publication-outcome
+[SNS] publication events published (database outbox):
+    published|105
+[Lambda] supporthub-editorial-publication-outcome:
+    nodejs22.x	index.handler	Active	arn:aws:iam::000000000000:role/supporthub-editorial-publication-outcome-role
+[Lambda] receipts written by the Lambda for SNS events (database):
+    105
+[Secrets Manager] secrets loaded by the Editorial API at start-up (names only):
+    [secrets] supporthub/editorial/runtime: loaded 1 key(s) (CRON_SECRET)
+    [secrets] supporthub/shared/database: loaded 1 key(s) (DATABASE_URL)
+    [secrets] supporthub/shared/service-hmac: loaded 1 key(s) (SERVICE_SHARED_SECRET)
+    [secrets] supporthub/shared/session: loaded 1 key(s) (SESSION_SECRET)
+[IAM] inline policies:
+    POLICYNAMES	SupportHubEditorialSNSPublisher
+    POLICYNAMES	SupportHubEditorialSQSConsumer
+    POLICYNAMES	SupportHubEditorialSecrets
+
+=== NERMEEN - Search, Feedback & Analytics (IAM user search-analytics-service)
+[DynamoDB] supporthub-search-counters items (live counters):
+    items: 30
+    sample keys: ARTICLE#1	ARTICLE#127	ARTICLE#137	ARTICLE#159	ARTICLE#161
+    sample keys: None
+[CloudWatch] metrics in namespace SupportHub/Search:
+    ClientErrors IamProbe LatencyMs RateLimited Requests Searches ServerErrors ZeroResultSearches 
+[S3] supporthub-search-analytics-exports objects (CSV exports):
+    exports/analytics-20261125T185637Z.csv	690
+    exports/analytics-20261125T191343Z.csv	985
+    exports/analytics-20261125T192001Z.csv	1045
+    exports/analytics-20261125T192517Z.csv	1389
+    exports/analytics-20261125T193117Z.csv	1655
+[Secrets Manager] secrets loaded by the Search API at start-up (names only):
+    [secrets] supporthub/search/runtime: loaded 1 key(s) (TURNSTILE_SECRET_KEY)
+    [secrets] supporthub/shared/database: loaded 1 key(s) (DATABASE_URL)
+    [secrets] supporthub/shared/service-hmac: loaded 1 key(s) (SERVICE_SHARED_SECRET)
+    [secrets] supporthub/shared/session: loaded 1 key(s) (SESSION_SECRET)

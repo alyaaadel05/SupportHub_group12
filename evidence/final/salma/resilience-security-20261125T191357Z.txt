@@ -1,0 +1,16 @@
+Test command: node tests/integration/resilience-check.mjs
+Timestamp: 2026-11-25T19:13:57.393Z
+Component / owner: Editorial (Salma)
+Environment: isolated stack supporthub-iso-* (own Floci :4567, own PostgreSQL; no Neon, no team containers)
+Evidence source: real HTTP responses, database queries, AWS CLI and docker stop/start
+
+[PASS] review queue while AWS (Floci) is down
+    time:     2026-11-25T19:12:56.263Z
+    expected: HTTP 200
+    actual:   HTTP 200
+[FAIL] test section completed
+    time:     2026-11-25T19:13:18.795Z
+    expected: no exception
+    actual:   fetch failed
+
+Total: 1 passed, 1 failed

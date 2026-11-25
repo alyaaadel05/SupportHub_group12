@@ -1,0 +1,12 @@
+Test: read-only probe of the deployed production site (GETs + rejected writes without session)
+Timestamp: 2026-11-25T19:36:23Z | Owner: group
+Expected: public 200, protected 401, POST without CSRF 401/403
+GET / -> 200
+GET /api/auth/csrf -> 200
+GET /api/categories -> 200
+GET /api/public/articles -> 200
+GET /api/articles/mine -> 401
+GET /api/editorial/published -> 401
+GET /api/analytics/overview -> 401
+POST /api/auth/login (empty, no CSRF) -> 403
+Content-Security-Policy header on / : 0 (0 = the branch's frontend/_headers is not deployed there)

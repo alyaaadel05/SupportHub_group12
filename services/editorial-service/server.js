@@ -8,14 +8,14 @@ const rateLimit = require("express-rate-limit");
 const { generalLimit } = require("./config/rateLimitProfiles");
 const { securityEventLogger } = require("./middleware/securityEvents");
 const pool = require("./db/pool");
-const { requireCronSecret } = require("./middleware/security");
+const { requireCronSecret, allowedOrigins } = require("./middleware/security");
 const notifications = require("./services/notificationService");
 
 if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32 || !process.env.FRONTEND_ORIGIN)
   throw new Error("SESSION_SECRET (32+ chars) and FRONTEND_ORIGIN required");
 const app = express();
 app.use(cors({
-  origin: process.env.FRONTEND_ORIGIN,
+  origin: allowedOrigins(),
   credentials: true,
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "X-CSRF-Token"]

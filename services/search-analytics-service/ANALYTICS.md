@@ -74,7 +74,7 @@ success rate **80 %**, zero-result rate **20 %**, click-through **40 %**, helpfu
   The minimum-vote rule protects the "poorly rated" list; the overall rate should be read together
   with `totalVotes`.
 - **Time zone:** daily activity uses UTC days.
-- **Sentiment** is empty because Hugging Face currently returns 402 (no free credits); feedback is
+- **Sentiment** uses free local word-based classification (POSITIVE, NEGATIVE, NEUTRAL); feedback is
   still saved (see `SECURITY.md` S20).
 
 ## 5. Privacy

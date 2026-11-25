@@ -9,7 +9,7 @@ const PgSession = require("connect-pg-simple")(session);
 const rateLimit = require("express-rate-limit");
 
 const pool = require("./db/pool");
-const { requireLogin, noStore } = require("./middleware/security");
+const { requireLogin, noStore, allowedOrigins } = require("./middleware/security");
 const { requestMetrics } = require("./middleware/metrics");
 const { generalLimit } = require("./config/rateLimitProfiles");
 const { securityEventLogger } = require("./middleware/securityEvents");
@@ -51,7 +51,7 @@ app.use(helmet());
 app.use(securityEventLogger);
 
 app.use(cors({
-  origin: process.env.FRONTEND_ORIGIN,
+  origin: allowedOrigins(),
   credentials: true,
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: [

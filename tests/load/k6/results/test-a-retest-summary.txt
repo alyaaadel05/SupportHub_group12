@@ -1,0 +1,21 @@
+==== SupportHub Test A - 1,000 total HTTP requests, 50 VUs (isolated local stack) ====
+Total HTTP requests (incl. setup logins): 1000
+Failed (non-2xx/3xx): 0.00%
+Latency avg 105 ms, p95 351 ms, max 1158 ms
+Throughput: 339.2 req/s
+
+Service    Role     Requests   2xx   4xx   429   5xx  err   p95
+---------  -------  --------  ----  ----  ----  ----  ---  --------
+article    author        202   202     0     0     0    0    490 ms
+article    public         90    90     0     0     0    0    664 ms
+editorial  editor        106   106     0     0     0    0   1069 ms
+editorial  public          7     7     0     0     0    0    118 ms
+identity   author         72    72     0     0     0    0     57 ms
+identity   editor         50    50     0     0     0    0     33 ms
+identity   public         63    63     0     0     0    0     10 ms
+search     editor         47    47     0     0     0    0    231 ms
+search     public        359   359     0     0     0    0    146 ms
+
+By service: identity=189 (p95 39 ms), article=292 (p95 544 ms), editorial=113 (p95 1065 ms), search=406 (p95 150 ms)
+By role:    public=519 (p95 151 ms), author=274 (p95 369 ms), editor=203 (p95 907 ms)
+Request count check: PASS (1000 = 4 setup + 996 test)

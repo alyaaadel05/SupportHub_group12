@@ -67,15 +67,27 @@ function requireReviewer(req, res, next) {
   next();
 }
 
+// FRONTEND_ORIGIN may list several exact origins separated by commas, for
+// example "http://localhost:8080,http://127.0.0.1:8080,https://supporthub-group12.pages.dev".
+// This matches how the Identity and Article services read the same variable.
+// Every entry is an exact match: no wildcards, and a missing Origin is rejected.
+function allowedOrigins(value = process.env.FRONTEND_ORIGIN) {
+  return String(value || "")
+    .split(",")
+    .map(origin => origin.trim())
+    .filter(Boolean);
+}
+
+function isAllowedOrigin(origin, value = process.env.FRONTEND_ORIGIN) {
+  return typeof origin === "string" && allowedOrigins(value).includes(origin);
+}
+
 function requireBrowserWrite(req, res, next) {
   if (["GET", "HEAD", "OPTIONS"].includes(req.method)) {
     return next();
   }
 
-  const allowedOrigin = process.env.FRONTEND_ORIGIN;
-  const suppliedOrigin = req.get("Origin");
-
-  if (!allowedOrigin || suppliedOrigin !== allowedOrigin) {
+  if (!isAllowedOrigin(req.get("Origin"))) {
     return res.status(403).json({
       error: "Origin not allowed"
     });
@@ -132,6 +144,8 @@ function requireCronSecret(req, res, next) {
 }
 
 module.exports = {
+  allowedOrigins,
+  isAllowedOrigin,
   requireLogin,
   requireReviewer,
   requireAuthor,
