@@ -1,0 +1,60 @@
+# SupportHub Group 12 - REMOTE Floci host (always-on Linux VM, not a laptop)
+#
+# Runs ONLY the AWS layer: Floci (IAM, Secrets Manager, SQS+DLQ, SNS, Lambda,
+# S3, DynamoDB, CloudWatch, ECS) and the Cloudflare Tunnel connector. The four
+# API microservices stay on Vercel; the three background workers run as ECS
+# services that Floci starts as real containers (infra/floci/ecs/).
+#
+# SECURITY
+#  - No "ports:" anywhere: nothing listens on the VM's public interface.
+#  - Floci is reachable only (a) on the private Docker network "supporthub-net"
+#    (ECS worker tasks, Lambda containers, cloudflared) and (b) through the
+#    Cloudflare Tunnel hostname, which is protected by a Cloudflare Access
+#    application with a Service Auth (service token) policy. Vercel sends the
+#    token headers via config/flociAccess.js. Requests without the token are
+#    rejected at Cloudflare's edge and never reach the VM.
+#  - The Docker socket is mounted only into Floci (required for ECS/Lambda) and
+#    is never exposed. The VM firewall allows no inbound traffic except SSH
+#    (key-only, ideally restricted to your IP or Tailscale).
+#  - TUNNEL_TOKEN lives in infra/floci/.generated/remote/cloudflared.env
+#    (git-ignored, created on the VM only).
+#
+# Start (on the VM, repository root):
+#   docker compose -f infra/floci/remote/docker-compose.remote.yml up -d
+# Full procedure: infra/floci/remote/README.md
+
+name: supporthub-remote
+
+services:
+  floci:
+    image: floci/floci:latest   # tested with 2.5.0 (amd64 + arm64 images published)
+    container_name: supporthub-floci
+    environment:
+      FLOCI_STORAGE_MODE: persistent
+      FLOCI_STORAGE_PERSISTENT_PATH: /app/data
+      FLOCI_SERVICES_IAM_ENFORCEMENT_ENABLED: "true"
+    volumes:
+      - floci-data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock   # ECS tasks + Lambda run as sibling containers
+    networks:
+      supporthub-net:
+        aliases: [floci]
+    # Health check: the image's built-in /usr/local/bin/healthcheck.sh (no wget/curl in the image).
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: supporthub-cloudflared
+    command: ["tunnel", "--no-autoupdate", "run"]
+    env_file: ["../.generated/remote/cloudflared.env"]   # TUNNEL_TOKEN=... (never committed)
+    networks: [supporthub-net]
+    depends_on:
+      floci: { condition: service_started }
+    restart: unless-stopped
+
+networks:
+  supporthub-net:
+    name: supporthub-net
+
+volumes:
+  floci-data:

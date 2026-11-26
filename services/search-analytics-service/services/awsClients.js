@@ -13,8 +13,16 @@ function baseConfig() {
   return config;
 }
 
-const dynamo = DynamoDBDocumentClient.from(new DynamoDBClient(baseConfig()));
-const cloudwatch = new CloudWatchClient(baseConfig());
-const s3 = new S3Client({ ...baseConfig(), forcePathStyle: true });
+const { withFlociAccess } = require("../config/flociAccess");
+
+const dynamo = DynamoDBDocumentClient.from(withFlociAccess(new DynamoDBClient(baseConfig())));
+const cloudwatch = withFlociAccess(new CloudWatchClient(baseConfig()));
+// Fail fast when the export storage is unreachable (for example a deployment
+// that cannot reach a local Floci), well inside the 10 s proxy/serverless budget.
+const s3 = withFlociAccess(new S3Client({
+  ...baseConfig(),
+  forcePathStyle: true,
+  requestHandler: { connectionTimeout: 3000, requestTimeout: 8000 }
+}));
 
 module.exports = { dynamo, cloudwatch, s3 };

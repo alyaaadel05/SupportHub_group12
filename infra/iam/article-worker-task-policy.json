@@ -1,0 +1,20 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PublishArticleEventsOnly",
+      "Effect": "Allow",
+      "Action": ["sqs:SendMessage", "sqs:GetQueueUrl", "sqs:GetQueueAttributes"],
+      "Resource": [
+        "arn:aws:sqs:us-east-1:000000000000:supporthub-article-events",
+        "arn:aws:sqs:us-east-1:000000000000:supporthub-article-events-production"
+      ]
+    },
+    {
+      "Sid": "ReadDatabaseSecretOnly",
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "arn:aws:secretsmanager:us-east-1:000000000000:secret:supporthub/shared/database-*"
+    }
+  ]
+}

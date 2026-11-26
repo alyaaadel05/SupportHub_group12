@@ -1,0 +1,61 @@
+SupportHub Group 12 - Instructor feedback - 01 Architecture audit
+==========================================================================
+Date (UTC) 2026-11-26 ; branch integration/group12-final (read-only audit of repository,
+Docker host, Floci and earlier evidence). Lab 10 (cloud course) is NOT available on this machine
+(lectures/ holds Labs 1-5 and 7; Downloads "Lab 10 Functions Security Jobs" is a SQL Server lab);
+per your instruction it was skipped and its contents are not assumed. Lab 07 confirms the course
+model "Floci, a free copy of AWS running on the laptop".
+
+1. LOGICAL MICROSERVICES (4) AND WHERE THEY RUN TODAY
+  Service (owner)                    Code                               Production today            Other copies
+  Identity (shared, Alyaa)           services/identity-service          Vercel supporthub-identity-service      dev Docker supporthub-identity:3006; iso/int/loadtest containers
+  Article & Category (Alyaa)         services/article-service           Vercel supporthub-article-service       dev Docker supporthub-article:3005; iso
+  Editorial (Salma)                  services/editorial-service         Vercel supporthub-editorial-service-group1   dev Docker supporthub-editorial:3007; iso;
+                                                                         + STALE Vercel supporthub-editorial-service (health 500)
+  Search & Analytics (Nermeen)       services/search-analytics-service  Vercel supporthub-search-analytics-group12 (alias supporthub-search-analytics)   iso
+  -> The Docker API containers and the Vercel APIs are the SAME logical microservices (same
+     source directories, same routes) deployed to different environments. Only the Vercel
+     deployments serve production (Cloudflare Pages /api proxy). The Docker API containers are
+     development/test copies (dev Neon or isolated Postgres) and are NOT required in production.
+
+2. BACKGROUND WORKERS (3)
+  Article Outbox Worker (Alyaa)       article-service/services/articleOutboxScheduler.js   Neon outbox -> SQS
+  Editorial Article Consumer (Salma)  editorial-service/workers/articleEventConsumer.js    SQS -> Neon inbox/review (HMAC GET Article)
+  Editorial Publication Worker (Salma) editorial-service/workers/publicationEventPublisher.js  Neon publication outbox -> SNS
+  Production today: supporthub-prod-article-outbox-worker, supporthub-prod-editorial-article-worker
+  on THIS LAPTOP (Docker + main Floci :4566) = the laptop dependency to remove. The production
+  publication worker is NOT running anywhere (production publication events are not sent to SNS).
+
+3. FRONTEND / PROXY
+  Cloudflare Pages supporthub-group12.pages.dev + Pages Function frontend/functions/api/[[path]].js
+  (routes /api/* to IDENTITY/ARTICLE/EDITORIAL/SEARCH_ANALYTICS_ORIGIN). Local dev proxy frontend/dev-server.js.
+
+4. DATABASES
+  Neon production (pooled endpoint ep-steep-mouse-...; restricted roles supporthub_{article,identity,
+  editorial,search}_app, owner role unused); Neon development (separate endpoint, used by dev Docker);
+  isolated local Postgres (supporthub-iso-postgres) for tests.
+
+5. AWS (Floci) RESOURCES AND IDENTITIES
+  SQS supporthub-article-events(+ -production) with DLQ (redrive after 5); SNS supporthub-editorial-
+  publication-events (-> Lambda), supporthub-identity-security-alerts; Lambda supporthub-editorial-
+  publication-outcome (role: own log group only); S3 supporthub-article-backups, supporthub-search-
+  analytics-exports; DynamoDB supporthub-search-counters; CloudWatch metrics SupportHub/Search and
+  Logs /aws/lambda/...; Secrets Manager supporthub/shared/{session,service-hmac,database},
+  supporthub/{article,editorial,search,identity}/runtime; ECS (new, isolated: cluster supporthub-workers).
+  IAM users: supporthub-{identity,article,editorial}-service, search-analytics-service,
+  supporthub-prod-* (production queue); roles: Lambda role, ECS execution + 2 task roles (new).
+
+6. EXTERNAL APIS
+  Cloudflare Turnstile siteverify (Identity registration, Search votes/feedback); Stack Exchange API
+  (Article references, optional key); sentiment is local (npm "sentiment", no API).
+
+7. DEPLOYMENT ENVIRONMENTS AND DUPLICATES
+  production (Vercel + Neon prod + laptop workers/main Floci) | development (laptop Docker + Neon dev)
+  | isolated test (supporthub-iso-*) | load-test copies (stopped).
+  Required for final production: Cloudflare Pages, 4 Vercel APIs, Neon prod, Floci + 3 workers on an
+  always-on host. Not required: dev/iso/int/loadtest API containers (keep for development only),
+  stale Vercel project supporthub-editorial-service.
+
+8. LOCAL DEPENDENCIES TO REMOVE
+  main Floci :4566 and the two production worker containers on the laptop; Vercel APIs currently
+  cannot reach any Floci (export/counters/backups unavailable in production).

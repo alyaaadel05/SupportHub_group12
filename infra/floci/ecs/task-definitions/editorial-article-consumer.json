@@ -1,0 +1,98 @@
+{
+  "family": "supporthub-editorial-article-consumer",
+  "networkMode": "bridge",
+  "requiresCompatibilities": [
+    "EC2"
+  ],
+  "taskRoleArn": "arn:aws:iam::000000000000:role/supporthub-editorial-worker-task",
+  "executionRoleArn": "arn:aws:iam::000000000000:role/supporthub-ecs-execution",
+  "containerDefinitions": [
+    {
+      "name": "editorial-article-consumer",
+      "image": "__EDITORIAL_IMAGE__",
+      "essential": true,
+      "memory": 256,
+      "entryPoint": [
+        "sh",
+        "-c"
+      ],
+      "command": [
+        "if [ -n \"$LOCAL_CA_PEM\" ]; then printf '%s\\n' \"$LOCAL_CA_PEM\" > /tmp/ca.crt; export NODE_EXTRA_CA_CERTS=/tmp/ca.crt; fi; exec node start.js workers/articleEventConsumer.js"
+      ],
+      "environment": [
+        {
+          "name": "AWS_REGION",
+          "value": "us-east-1"
+        },
+        {
+          "name": "AWS_SESSION_TOKEN",
+          "value": ""
+        },
+        {
+          "name": "AWS_ENDPOINT_URL",
+          "value": "http://floci:4566"
+        },
+        {
+          "name": "AWS_SECRETS_ENABLED",
+          "value": "true"
+        },
+        {
+          "name": "SECRETS_REQUIRED",
+          "value": "true"
+        },
+        {
+          "name": "SECRET_IDS",
+          "value": "supporthub/shared/service-hmac,supporthub/shared/database"
+        },
+        {
+          "name": "ARTICLE_SERVICE_URL",
+          "value": "__ARTICLE_SERVICE_URL__"
+        },
+        {
+          "name": "SQS_ENDPOINT_URL",
+          "value": "http://floci:4566"
+        },
+        {
+          "name": "ARTICLE_EVENTS_QUEUE_URL",
+          "value": "__ARTICLE_QUEUE_URL__"
+        },
+        {
+          "name": "SQS_WAIT_TIME_SECONDS",
+          "value": "5"
+        },
+        {
+          "name": "SQS_VISIBILITY_TIMEOUT",
+          "value": "30"
+        },
+        {
+          "name": "NODE_ENV",
+          "value": "__NODE_ENV__"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "AWS_ACCESS_KEY_ID",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:000000000000:secret:supporthub/ecs/editorial-worker-credentials:AWS_ACCESS_KEY_ID::"
+        },
+        {
+          "name": "AWS_SECRET_ACCESS_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:000000000000:secret:supporthub/ecs/editorial-worker-credentials:AWS_SECRET_ACCESS_KEY::"
+        },
+        {
+          "name": "LOCAL_CA_PEM",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:000000000000:secret:supporthub/ecs/local-ca:LOCAL_CA_PEM::"
+        }
+      ],
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "pgrep -f articleEventConsumer.js > /dev/null || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 20
+      }
+    }
+  ]
+}

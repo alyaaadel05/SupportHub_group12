@@ -1,0 +1,161 @@
+SupportHub Group 12 - 05 Remote deployment preparation and rehearsal
+==========================================================================
+Date (UTC) 2026-11-26 ; nothing deployed, purchased, committed or changed in production.
+
+A. RESEARCH (official docs) - zero-cost choices
+  Host: Google Cloud always-free e2-micro (1 per month, us-west1/us-central1/us-east1, 30 GB standard disk).
+        Oracle Always Free Arm reported reduced to 2 OCPU/12 GB in 2026 with frequent capacity errors.
+  Footprint measured (docker stats, isolated): Floci 99.7 MiB, workers 26-33 MiB each, images ~1.6 GB
+        -> e2-micro + 2 GB swap sufficient. All images multi-arch (amd64/arm64).
+  No domain: Cloudflare Workers VPC (free on all Workers plans in beta) lets a *.workers.dev Worker reach a
+        service behind a Cloudflare Tunnel; the docs show no public hostname/DNS requirement.
+        Not stated by the docs and therefore checked at deployment: port 4566, binary bodies, Docker DNS.
+  Repository: no custom domain configured (only pages.dev / vercel.app).
+
+B. PRODUCTION STATE (read-only, restricted roles)
+  editorial_publication_event_outbox: 1 pending (Article 21, since 2026-11-25T23:52Z); receipts 0;
+  article_event_outbox 16 published; Search notifications delivered; laptop queue + DLQ 0/0.
+  Editorial role privileges: INSERT receipts, UPDATE publication outbox (Lambda + worker can work).
+
+C. GATEWAY WORKER (infra/cloudflare/floci-gateway/src/index.js) run locally with the real SDK clients
+Worker code under test: infra/cloudflare/floci-gateway/src/index.js ; local gateway http://127.0.0.1:53967 -> isolated Floci http://127.0.0.1:4567
+PASS | Search -> DynamoDB Scan through the Worker | items=2
+PASS | Search -> S3 PutObject 70 KB binary body through the Worker
+PASS | binary body byte-identical after round-trip (sha256) | 70000 bytes
+PASS | Search -> CloudWatch PutMetricData through the Worker
+PASS | IAM still enforced behind the Worker (Search key -> Article bucket denied) | AccessDenied
+PASS | Article -> S3 backup Put/Get through the Worker
+PASS | request WITHOUT gateway token rejected (403 at the Worker)
+PASS | wrong gateway secret rejected (403 at the Worker)
+PASS | unauthenticated health endpoint reveals nothing about Floci
+gateway decisions: forwarded=7 denied=3
+Total: 9 passed, 0 failed
+
+D. TEMPORARY-FILE SAFETY (deploy-ecs-workers.sh rewritten on request)
+  bash tests/integration/ecs-deploy-tmp-safety-check.sh -> 10 passed, 0 failed (symlink case skipped on Windows)
+  real isolated deploy afterwards: 14/14, no temporary directory left behind.
+
+E. REHEARSAL on a simulated private host (supporthub-remote-sim-floci: no published ports, own network,
+   isolated Postgres/Article attached as stand-ins for Neon/Vercel; isolated ECS workers scaled to 0)
+  remote-init-aws.sh: first run 15/4 FAIL (Windows-only path handling) -> fixed -> 19/19 PASS
+    [PASS] Floci reachable on supporthub-remote-sim-net (no host port)
+    [PASS] bucket supporthub-article-backups (Block Public Access on)
+    [PASS] bucket supporthub-search-analytics-exports (Block Public Access on)
+    [PASS] queue supporthub-article-events-production -> DLQ supporthub-article-events-production-dlq after 5 receives
+    [PASS] topic supporthub-editorial-publication-events
+    [PASS] topic supporthub-identity-security-alerts
+    [PASS] table supporthub-search-counters
+    [PASS] secret supporthub/article/database created
+    [PASS] secret supporthub/editorial/database created
+    [PASS] secret supporthub/shared/service-hmac created
+    [PASS] IAM user supporthub-prod-article-worker (2 policies, key in infra/floci/.generated/remote-sim/article.aws.env)
+    [PASS] IAM user supporthub-prod-editorial-worker (3 policies, key in infra/floci/.generated/remote-sim/editorial.aws.env)
+    [PASS] IAM user supporthub-article-service (1 policies, key in infra/floci/.generated/remote-sim/vercel-article.aws.env)
+    [PASS] IAM user search-analytics-service (1 policies, key in infra/floci/.generated/remote-sim/vercel-search.aws.env)
+    [PASS] IAM user supporthub-identity-service (1 policies, key in infra/floci/.generated/remote-sim/vercel-identity.aws.env)
+    [PASS] role supporthub-editorial-publication-outcome-role (own log group only)
+    [PASS] Lambda package built (infra/floci/.generated/remote-sim/publication-outcome.zip, private CA bundled)
+    [PASS] Lambda supporthub-editorial-publication-outcome created
+    [PASS] SNS -> Lambda subscription exists
+  deploy-ecs-workers.sh --env remote: first run FAIL (same Windows path issue) -> fixed -> 14/14 PASS
+  workers on the host network only, each loading ONLY its own DB secret.
+  first lifecycle: consumer refused http://article:3001 ("Internal requests must use HTTPS in production")
+    = correct security behaviour; real host uses the HTTPS Vercel URL. Rehearsal-only override
+    SUPPORTHUB_TASK_NODE_ENV=development added; REFUSED for the real remote folder (guard tested).
+  lifecycle through the simulated host (outbox worker -> host SQS -> host ECS consumer -> publish ->
+  host publication worker -> host SNS -> host Lambda -> receipt):
+    ######## editorial-lambda-check phase=e2e - 2026-11-26T15:03:17.715Z (token lambdacheck20261126t150317691z)
+    PASS | fresh article 251 created, submitted via SQS and approved | queue after 6.3 s, approve HTTP 201
+    PASS | editor publishes article 251 through the application | HTTP 200 
+    PASS | worker published the outbox event to SNS | state=published attempts=1 after 2.5 s
+    PASS | SNS triggered the Lambda, which wrote a persistent receipt | after 0.3 s: 748e12c8-fa7f-472a-ad16-a25df17fb998|251|editorial.publication.published|2026-11-26 15:03:27.775706+00
+    PASS | receipt event_id = outbox eventId = payload eventId | 748e12c8-fa7f-472a-ad16-a25df17fb998
+    PASS | receipt article_id = published article = payload data.articleId | 251
+    PASS | receipt event_type = payload eventType = editorial.publication.published
+    PASS | receipt processed_at after occurredAt | 2026-11-26T15:03:25.139Z -> 2026-11-26 15:03:27.775706+00
+    PASS | exactly one receipt for the event
+    PASS | invocation was SNS-driven (no manual lambda invoke issued by this phase) | only the application publish was performed
+    phase e2e: 10 passed, 0 failed, 0 not verified
+
+  verify-remote.sh on the simulated host:
+    Remote Floci host verification - 2026-11-26T15:07:33Z
+    
+    == 1. Host exposure
+      [NOT VERIFIED] host listener/firewall checks (not a Linux host - rehearsal)
+    
+    == 2. Containers
+      [PASS] supporthub-remote-sim-floci healthy
+      [PASS] supporthub-remote-sim-floci publishes no host port
+      [FAIL] published ports: supporthub-editorial 0.0.0.0:3007->3002/tcp, [::]:3007->3002/tcp
+    supporthub-identity 0.0.0.0:3006->3003/tcp, [::]:3006->3003/tcp
+    supporthub-article 0.0.0.0:3005->3001/tcp, [::]:3005->3001/tcp
+    supporthub-floci 0.0.0.0:4566->4566/tcp, [::]:4566->4566/tcp
+      [NOT VERIFIED] cloudflared (rehearsal without tunnel)
+    
+    == 3. AWS resources
+      [PASS] bucket supporthub-article-backups private (Block Public Access x4)
+      [PASS] bucket supporthub-search-analytics-exports private (Block Public Access x4)
+      [PASS] queue supporthub-article-events-production with DLQ redrive
+      [PASS] topic supporthub-editorial-publication-events
+      [PASS] topic supporthub-identity-security-alerts
+      [PASS] DynamoDB table ACTIVE
+      [PASS] secret supporthub/article/database present (value not read)
+      [PASS] secret supporthub/editorial/database present (value not read)
+      [PASS] secret supporthub/shared/service-hmac present (value not read)
+      [PASS] secret supporthub/ecs/article-worker-credentials present (value not read)
+      [PASS] secret supporthub/ecs/editorial-worker-credentials present (value not read)
+      [PASS] Lambda Active
+      [PASS] exactly one SNS -> Lambda subscription
+    
+    == 4. ECS
+      [PASS] service article-outbox-worker (ACTIVE	0	0)
+      [PASS] service editorial-article-consumer (ACTIVE	0	0)
+      [PASS] service editorial-publication-worker (ACTIVE	0	0)
+    
+    == 5. IAM least privilege (component keys; read-only or denied calls only)
+      [PASS] ALLOW editorial worker GetQueueAttributes production queue
+      [PASS] DENY  article worker ReceiveMessage (consumer action)
+      [PASS] ALLOW article worker reads its own DB secret (name only)
+      [PASS] DENY  article worker reads the editorial DB secret
+      [PASS] DENY  editorial worker reads the article DB secret
+      [PASS] DENY  editorial worker publishes to identity alerts topic
+      [PASS] ALLOW Vercel article key lists its backups
+      [PASS] DENY  Vercel article key scans DynamoDB
+      [PASS] ALLOW Vercel search key scans counters
+      [PASS] DENY  Vercel search key writes to article backups
+      [PASS] DENY  Vercel identity key reads a secret
+      [PASS] DENY  any component key invokes the Lambda
+    
+    Total: 30 passed, 1 failed, 2 not verified
+    The FAIL lists THIS LAPTOP's own published containers (incl. main Floci 0.0.0.0:4566, finding S1);
+    they do not exist on the real VM. Check works as intended.
+
+F. CUTOVER SCRIPT
+  cutover.sh --check (read-only): laptop workers running, laptop queue 0/0, DLQ 0/0, 1 pending publication
+  event; nothing changed. Cutover/rollback paths require --i-approve-production-cutover / --rollback.
+
+G. RESTORED STATE
+  simulated host stopped (kept), its ECS containers 0, isolated ECS workers back to 3, iso containers detached.
+
+REMAINING (needs you): VM + SSH access, Cloudflare tunnel token, wrangler login, approvals for Vercel
+env changes and the cutover. Then: deploy, gateway, Vercel connectivity, full public test, laptop-off
+test, per-student verification, final diagram.
+
+H. STRICT $0 COST VERIFICATION (official documentation, 2026-11-26) - CORRECTS SECTION A
+  Google Cloud (docs.cloud.google.com/free, cloud.google.com/vpc/network-pricing, /nat/pricing):
+    e2-micro VM, 30 GB standard PD and 1 GB/month egress are free, BUT an in-use external IPv4 on a VM
+    is billed at $0.005/hour (~$3.65/month; free allowance 1 hour/month); Cloud NAT (the alternative
+    to an external IP) is billed ($0.0014/instance-hour + $0.045/GiB + NAT IP); egress above 1 GB
+    ~$0.12/GiB; budgets only alert (no hard cap). The two pricing pages could not be extracted in
+    full by the fetcher; figures come from Google's own pages via search excerpts.
+    => REJECTED for the $0 budget (earlier recommendation withdrawn).
+  Oracle Always Free (docs.oracle.com Always Free Resources):
+    up to 2 x VM.Standard.E2.1.Micro (1/8 OCPU, 1 GB), "one VNIC with one public IP address",
+    10 TB/month outbound, 200 GB block+boot; free "for the life of the account".
+    Risks: idle reclamation (7-day 95th-percentile CPU and network both < 20 % -> instance may be
+    stopped, restartable); capacity; FAQ (card/hold, hard no-charge statement) returned 403 - NOT VERIFIED.
+  Cloudflare (developers.cloudflare.com, dateModified 2026-11): Workers Free 100,000 req/day
+    (error 1027 when exceeded, no charge stated), 10 ms CPU, 50 subrequests; Workers VPC free on all
+    plans during beta, post-beta pricing NOT stated; Tunnel available on all plans; workers.dev
+    Browser Integrity Check cannot be disabled (some user agents -> error 1010; to be tested).
+  No resource was created and nothing was activated.

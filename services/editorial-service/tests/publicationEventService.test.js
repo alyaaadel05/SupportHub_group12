@@ -379,3 +379,53 @@ test("increases retry delay using exponential backoff", async () => {
   assert.equal(update.values[2], "pending");
   assert.equal(update.values[3], 10);
 });
+// ---- Phase 4: recovery of SNS events whose retries were exhausted ----
+
+test("requeueFailed returns failed events to pending with a fresh retry budget", async () => {
+  const calls = [];
+  const pool = {
+    async query(sql, params) {
+      calls.push({ sql, params });
+      return { rows: [{ event_id: "35b3c114-4834-47c8-8bbe-5ebb901f7ebe" }] };
+    }
+  };
+
+  const service = createPublicationEventService({ pool });
+  const result = await service.requeueFailed({
+    eventId: "35b3c114-4834-47c8-8bbe-5ebb901f7ebe"
+  });
+
+  assert.equal(result.requeued, 1);
+  assert.deepEqual(result.eventIds, ["35b3c114-4834-47c8-8bbe-5ebb901f7ebe"]);
+  assert.match(calls[0].sql, /state = 'failed'/);
+  assert.match(calls[0].sql, /SET state = 'pending'/);
+  assert.match(calls[0].sql, /attempts = 0/);
+  assert.equal(calls[0].params[0], "35b3c114-4834-47c8-8bbe-5ebb901f7ebe");
+});
+
+test("requeueFailed without eventId requeues all failed events (bounded)", async () => {
+  const calls = [];
+  const pool = {
+    async query(sql, params) {
+      calls.push({ sql, params });
+      return { rows: [] };
+    }
+  };
+
+  const service = createPublicationEventService({ pool });
+  const result = await service.requeueFailed({ limit: 1000 });
+
+  assert.equal(result.requeued, 0);
+  assert.equal(calls[0].params[0], null);
+  assert.equal(calls[0].params[1], 100);
+});
+
+test("requeueFailed rejects an invalid eventId without touching the database", async () => {
+  const pool = { async query() { throw new Error("must not query"); } };
+  const service = createPublicationEventService({ pool });
+
+  await assert.rejects(
+    service.requeueFailed({ eventId: "1; DROP TABLE x" }),
+    error => error.status === 400
+  );
+});

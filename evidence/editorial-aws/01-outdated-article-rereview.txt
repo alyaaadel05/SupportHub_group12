@@ -1,0 +1,269 @@
+SupportHub Group 12 - Phase 4 Editorial (Salma) - Task 1
+01 - Outdated article re-review lifecycle
+==========================================================================
+
+TEST OBJECTIVE
+  Verify end to end that a freshly created article can be submitted, reviewed,
+  approved and published, then flagged as outdated, enters the editorial
+  re-review workflow, is processed by an authorized editor and completes,
+  with correct Article / Editorial / Search communication, consistent
+  visibility and search indexing, authorization / ownership / invalid
+  transition protection, duplicate protection and persistent records.
+
+ENVIRONMENT
+  Date (UTC)       : 2026-11-26 (baseline run 05:19:59Z, retest 05:23:18Z)
+  Host             : Windows 11, Docker Desktop, Git Bash, Node 26, AWS CLI v2
+  Stack            : ISOLATED supporthub-iso-* (own Floci 2.5.0 on 127.0.0.1:4567,
+                     own PostgreSQL 16 container supporthub-iso-postgres, no host port)
+  Entry point      : same-origin frontend proxy http://localhost:8188 (supporthub-iso-frontend)
+  Accounts         : local demo accounts author(1) author2(2) editor(3) editor2(4) admin(5)
+                     @supporthub.test; password read from the git-ignored
+                     infra/floci/.generated/isolated/demo-accounts.txt, never printed
+  Production       : NOT used. No Neon database, no production container, no Article 21.
+  Articles created : baseline 233 (main), 234 (draft), 235 (admin-authored)
+                     retest   236 (main), 237 (draft), 238 (admin-authored)
+
+INTENDED PROJECT DESIGN (re-review)
+  The microservice design implemented by the Editorial Service (README "Flag
+  outdated articles", docs/test-plan.md F12, frontend/js/editorial.js "Flag as
+  Outdated", frontend/js/editorial-extras.js "resolve with an explanation",
+  services/editorial-service/services/flagService.js):
+    published article --POST /api/articles/:id/flags (editor/admin)--> OPEN flag
+      = item in the editors' re-review queue  GET /api/editorial/flags
+    OPEN flag --PATCH /api/flags/:id {resolution} (independent editor)--> RESOLVED
+      (resolution = "what was updated or why no change is needed")
+  The article stays PUBLISHED and searchable while the re-review is open: the
+  Article Service state machine has no published->outdated transition
+  (allowed: draft->in_review, in_review->draft|approved, approved->published|draft,
+  published->draft). The legacy monolith in backend/ set articles.status='outdated';
+  that path is not part of the deployed microservice design and was intentionally
+  NOT reintroduced (it would change Alyaa's Article state machine and production
+  behaviour).
+
+COMMANDS
+  node tests/integration/editorial-rereview-check.mjs
+    defaults: BASE_URL=http://localhost:8188  DB_CONTAINER=supporthub-iso-postgres
+              FLOCI_URL=http://localhost:4567 (script refuses non-isolated targets)
+  API requests issued by the script (cookies / CSRF tokens never logged):
+    POST  /api/auth/login                       (5 roles)
+    POST  /api/articles                         (author / admin)
+    POST  /api/articles/:id/submit              (Article -> outbox -> SQS)
+    GET   /api/reviews?status=pending           (Editorial queue fed by the SQS consumer)
+    POST  /api/articles/:id/reviews             {"decision":"approved","comments":"..."}
+    PATCH /api/articles/:id/publication         (Editorial -> Article HMAC -> Search HMAC)
+    GET   /api/public/articles?q=<token>        (Search)
+    GET   /api/public/articles/:id              (Search)
+    POST  /api/articles/:id/flags               {"reason":"..."}
+    GET   /api/editorial/flags?limit=100
+    PATCH /api/flags/:id                        {"resolution":"..."}
+    GET   /api/articles/:id/history
+  Duplicate SQS event (Floci admin test/test, ISOLATED queue only):
+    aws --endpoint-url http://localhost:4567 sqs send-message \
+      --queue-url http://localhost:4567/000000000000/supporthub-article-events \
+      --message-body "<identical article.submitted payload read from article_event_outbox>"
+  Database checks:
+    docker exec supporthub-iso-postgres psql -U supporthub -d supporthub -tAc "<SELECT ...>"
+
+--------------------------------------------------------------------------
+BASELINE RUN (code as found) - 59 passed, 6 failed
+--------------------------------------------------------------------------
+  FAIL | SQL-injection article id -> 400 | HTTP 404
+  FAIL | repeat flag by same editor returns the existing open flag (200, same id, no new row) | HTTP 201 flag=3 duplicate=undefined
+  FAIL | exactly ONE open flag (one re-review) exists for the article | open=7 total=7
+  FAIL | author of the article cannot resolve its own re-review (self-review) -> 403 | HTTP 200
+  FAIL | independent editor resolves admin-authored re-review | HTTP 409
+  FAIL | flag history: 2 cycles, both resolved, none open
+
+  Baseline flag rows for article 233: #2 resolved; #3 #4 #5 #6 #7 #8 OPEN
+  (six parallel open re-reviews for one article, from 1 repeat + 5 concurrent requests).
+  Admin-authored article 235: admin (its author) resolved its own re-review with HTTP 200;
+  the independent editor then got 409.
+
+DEFECTS FOUND
+  D1 (FIXED) Duplicate outdated requests created duplicate re-reviews.
+     POST /api/articles/:id/flags always INSERTed a new open flag.
+  D2 (FIXED) Self re-review was possible. The author of an article (the admin
+     role can both author and review) could resolve the re-review of their own
+     article, unlike publication, which already returns 403 "Cannot publish
+     your own article".
+  N1 (NOT A DEFECT - test expectation corrected) /api/articles/1%20OR%201=1/flags
+     returned 404, not 400: the same-origin proxy (frontend/dev-server.js) only
+     forwards numeric ids (/^\/api\/articles\/\d+\/flags$/) to Editorial, so the
+     request never reaches Editorial or SQL. No row was created (verified).
+  The other 2 baseline failures were consequences of D1/D2.
+
+CHANGES IMPLEMENTED (Claude-assisted, Phase 4)
+  services/editorial-service/migrations/008_flag_one_open_per_article.sql (NEW)
+    - closes pre-existing duplicate open flags NON-destructively (keeps the
+      oldest open flag; the others are resolved with "Duplicate of open flag #N
+      (closed by migration 008)"; nothing is deleted), then creates the partial
+      unique index editorial_flags_one_open_per_article ON (article_id) WHERE status='open'.
+  services/editorial-service/services/flagService.js
+    - flag(): INSERT ... ON CONFLICT (article_id) WHERE status='open' DO NOTHING;
+      on conflict returns the existing open flag with duplicate=true (atomic and
+      race-safe; one retry if the open flag is resolved in between).
+    - resolve(): loads the flag first (404 / 409 unchanged), asks Article Service
+      for the author and rejects self re-review with 403; fails closed if Article
+      Service is unavailable; the UPDATE ... WHERE status='open' keeps the
+      concurrent-resolution 409.
+  services/editorial-service/controllers/flagController.js
+    - 201 {flag, duplicate:false} for a new re-review;
+      200 {flag, duplicate:true} when an open re-review already exists.
+  services/editorial-service/tests/flagService.test.js
+    - 3 existing tests adapted to the new query order; 5 new tests (duplicate
+      report, non-duplicate, self re-review 403, fail closed, concurrent 409).
+  infra/floci/docker-compose.supporthub.yml
+    - mounts migration 008 as 27-editorial-008.sql for fresh local databases.
+  tests/integration/editorial-rereview-check.mjs (NEW) - this verification.
+
+  Deployment in the ISOLATED stack only:
+    docker exec -i supporthub-iso-postgres psql -U supporthub -d supporthub -v ON_ERROR_STOP=1 \
+      < services/editorial-service/migrations/008_flag_one_open_per_article.sql
+      -> BEGIN / UPDATE 5 / CREATE INDEX / COMMIT   (5 = baseline duplicates #4-#8 closed)
+    . infra/floci/isolated-env.sh
+    docker compose -f infra/floci/docker-compose.supporthub.yml build editorial
+    docker compose -f infra/floci/docker-compose.supporthub.yml up -d --no-deps --no-build \
+      editorial editorial-article-worker editorial-publication-worker
+    Only supporthub-iso-editorial* were recreated. Image supporthub-int-editorial:local is
+    used by no production container; production containers stayed "Up 2 hours".
+    docker exec supporthub-iso-editorial grep -c "ON CONFLICT (article_id) WHERE status = 'open'" \
+      services/flagService.js  -> 1 (fix deployed)
+  Unit tests: cd services/editorial-service && npm test -> tests 180, pass 180, fail 0
+
+--------------------------------------------------------------------------
+RETEST (after fix) - full transcript - 65 passed, 0 failed
+--------------------------------------------------------------------------
+Editorial re-review lifecycle check - 2026-11-26T05:23:18.426Z
+Base URL: http://localhost:8188 (isolated proxy)  DB: supporthub-iso-postgres  Floci: http://localhost:4567  token: rereview20261126t052318z
+PASS | login author | HTTP 200 role=author id=1
+PASS | login author2 | HTTP 200 role=author id=2
+PASS | login editor | HTTP 200 role=editor id=3
+PASS | login editor2 | HTTP 200 role=editor id=4
+PASS | login admin | HTTP 200 role=admin id=5
+
+== 1. Fresh article: create, submit, review, approve, publish
+PASS | author creates fresh draft | HTTP 201 article=236
+PASS | author submits article -> in_review | HTTP 200
+PASS | article reaches Editorial queue via outbox -> SQS -> consumer | after 3.1 s
+PASS | editor approves (201) | HTTP 201
+PASS | editor publishes (Editorial -> Article -> Search) | HTTP 200 deliveryStatus=delivered searchable=true
+PASS | published article is indexed by Search (public search) | after 0.0 s
+PASS | Article DB status = published
+PASS | one Editorial review row (approved)
+PASS | one inbox event for the submission
+
+== 2. Duplicate SQS event processing (same article.submitted re-delivered)
+PASS | duplicate article.submitted event re-sent to isolated SQS queue (Floci admin)
+PASS | duplicate event did not create a second review
+PASS | duplicate event did not create a second inbox row
+PASS | article still published after duplicate event
+
+== 3. Authorization and invalid-transition protection on flag creation
+PASS | anonymous flag -> 401 | HTTP 401
+PASS | author (non-reviewer) flag -> 403 | HTTP 403
+PASS | flag without CSRF token -> 403 | HTTP 403
+PASS | flag from foreign Origin -> 403 | HTTP 403
+PASS | blank reason -> 400 | HTTP 400
+PASS | SQL-injection article id rejected (400 Editorial / 404 proxy, never executed) | HTTP 404
+PASS | non-existent article -> 404 | HTTP 404
+PASS | flag a DRAFT article (invalid status) -> 409 | HTTP 409 Only published articles can be flagged
+PASS | no flag rows created by rejected requests
+
+== 4. Flag the published article as outdated (enters re-review)
+PASS | editor flags published article -> 201 | HTTP 201 flag=11 status=open
+PASS | flag persisted: open, flagged_by=editor, reason stored | open|3|2026-11-26 05:23:43.324382+00
+
+== 5. Duplicate outdated requests (sequential + concurrent)
+PASS | repeat flag by same editor returns the existing open flag (200, same id, no new row) | HTTP 200 flag=11 duplicate=true
+PASS | 5 concurrent flag requests all answered without 5xx | 200,200,200,200,200
+PASS | exactly ONE open flag (one re-review) exists for the article | open=1 total=1
+
+== 6. Re-review queue access and article visibility while under re-review
+PASS | authorized editor2 sees the open re-review in GET /api/editorial/flags | HTTP 200 total=2
+PASS | re-review item carries live Article data (Editorial -> Article HMAC) | article.status=published
+PASS | author cannot read the re-review queue -> 403 | HTTP 403
+PASS | anonymous cannot read the re-review queue -> 401 | HTTP 401
+PASS | article stays published during re-review (design: content stays available until the editor decides)
+PASS | article still searchable during re-review (index consistent with status)
+PASS | public article view still available during re-review | HTTP 200
+
+== 7. Re-review processing: authorization, ownership, invalid transitions
+PASS | anonymous resolve -> 401 | HTTP 401
+PASS | author resolve -> 403 | HTTP 403
+PASS | resolution text is mandatory -> 400 | HTTP 400
+PASS | resolve without CSRF -> 403 | HTTP 403
+PASS | resolve non-existent flag -> 404 | HTTP 404
+PASS | flag still open after rejected attempts
+     ownership case: article authored by admin, flagged, admin tries to resolve
+PASS | admin creates fresh draft | HTTP 201 article=238
+PASS | admin submits article -> in_review | HTTP 200
+PASS | article reaches Editorial queue via outbox -> SQS -> consumer | after 5.1 s
+PASS | editor approves (201) | HTTP 201
+PASS | editor publishes (Editorial -> Article -> Search) | HTTP 200 deliveryStatus=delivered searchable=true
+PASS | editor flags admin-authored article | HTTP 201 flag=18
+PASS | author of the article cannot resolve its own re-review (self-review) -> 403 | HTTP 403 Cannot resolve the re-review of your own article
+PASS | independent editor resolves admin-authored re-review | HTTP 200
+
+== 8. Successful completion of the re-review
+PASS | editor2 completes the re-review -> 200 resolved | HTTP 200 status=resolved
+PASS | resolving an already-resolved re-review (invalid transition) -> 409 | HTTP 409 Flag has already been resolved
+PASS | persisted resolution: resolved|editor2|resolution text|resolved_at>=created_at | resolved|4|true|true
+PASS | resolved re-review removed from the open queue
+PASS | article remains published after re-review
+PASS | article remains searchable after re-review
+
+== 9. A later outdated report opens a NEW re-review cycle
+PASS | new flag after resolution -> 201 with new id | HTTP 201 flag=19
+PASS | second cycle resolved | HTTP 200
+
+== 10. Persistent records and status history
+PASS | GET history returns exactly draft->in_review, in_review->approved, approved->published | draft->in_review, in_review->approved, approved->published
+     editorial_status_events: draft->in_review actor=1; in_review->approved actor=3; approved->published actor=3
+     editorial_outdated_flags: 11:resolved by=3 resolved_by=4; 19:resolved by=3 resolved_by=4
+PASS | flag history: 2 cycles, both resolved, none open
+PASS | exactly one publication event + one publication outbox row (re-review did not republish)
+PASS | search_published_articles holds the article once
+
+Articles created: 236 (main), 238 (ownership), 237 (draft, never published)
+Total: 65 passed, 0 failed
+
+--------------------------------------------------------------------------
+DATABASE VERIFICATION (after retest, supporthub-iso-postgres)
+--------------------------------------------------------------------------
+  articles             : 236|published|author 1 ; 237|draft|author 1 ; 238|published|author 5 (admin)
+  editorial_status_events(236): draft->in_review(actor 1), in_review->approved(3), approved->published(3)
+  editorial_outdated_flags(236): #11 resolved (flagged_by 3, resolved_by 4), #19 resolved (3 -> 4)
+    Flag ids 12-17 were consumed by the ON CONFLICT DO NOTHING attempts of the
+    duplicate requests (PostgreSQL sequences are not rolled back); no rows exist for them.
+  editorial_publication_event_outbox(236)=1 ; publication_outbox(236)=1 ; search_published_articles(236)=1
+  Index: CREATE UNIQUE INDEX editorial_flags_one_open_per_article ON public.editorial_outdated_flags
+         USING btree (article_id) WHERE (status = 'open'::text)
+
+SERVICE COMMUNICATION VERIFIED
+  Article -> outbox -> SQS -> Editorial consumer (review queue)       PASS
+  Editorial -> Article (HMAC GET /internal/articles/:id) on flag,
+    queue listing and resolution (author lookup)                       PASS
+  Editorial -> Article (HMAC PATCH /internal/articles/:id/status)      PASS
+  Editorial -> Search (HMAC POST /internal/publications)               PASS (deliveryStatus=delivered)
+  Search public index consistent with article status at every stage   PASS
+
+RESULT SUMMARY
+  Baseline : 59 PASS / 6 FAIL  (D1, D2 and the N1 test-expectation issue)
+  Retest   : 65 PASS / 0 FAIL
+  Open flag persisted across an Editorial restart: PASS (flag #3, article 233), see 03-sns-publication-notifications.txt section C
+  TASK 1 STATUS: COMPLETED
+
+REMAINING LIMITATIONS
+  - Re-review does not change articles.status (it stays 'published'), by design
+    of the current Article state machine. If the team wants outdated articles
+    hidden during re-review, Article Service needs a published->outdated
+    transition and Editorial must call Search POST /internal/unpublications
+    (exists, currently unused). Not implemented: outside Phase 4 scope.
+  - A duplicate report returns the existing open flag; the second reporter's
+    reason text is not stored (the response says duplicate:true).
+  - Migration 008 was applied ONLY to the isolated database. Shared Neon
+    development / production databases were NOT touched. Applying it there
+    (npm run db:migrate with the documented safety gate) is a manual step and
+    MUST precede deploying the new flagService.js (ON CONFLICT needs the index).
+  - Baseline article 233 keeps flag #3 open (isolated test data); it is
+    resolved through the API after the restart test (03, section C).

@@ -49,6 +49,13 @@ app.post("/internal/retry-notifications", requireCronSecret, async (req,res,next
   try { res.json({ results: await notifications.retryPending() }); }
   catch(e) { next(e); }
 });
+// Requeue SNS publication events whose automatic retries were exhausted ('failed').
+// Same cron secret; optional body { eventId } limits it to one event.
+const publicationEvents = require("./services/publicationEventService").createPublicationEventService({ pool });
+app.post("/internal/retry-publication-events", requireCronSecret, async (req,res,next) => {
+  try { res.json(await publicationEvents.requeueFailed({ eventId: req.body?.eventId })); }
+  catch(e) { next(e); }
+});
 app.use((req,res) => res.status(404).json({ error: "Route not found" }));
 app.use((error,req,res,next) => {
   if (error.type === "entity.too.large") return res.status(413).json({ error: "Request too large" });

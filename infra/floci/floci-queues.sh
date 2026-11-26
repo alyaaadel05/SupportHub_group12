@@ -166,6 +166,15 @@ fi
 published="$(docker inspect -f '{{range $p,$b := .HostConfig.PortBindings}}{{if eq $p "4566/tcp"}}{{range $b}}{{.HostPort}} {{end}}{{end}}{{end}}' "$FLOCI" | tr ' ' '\n' | grep -v '^$' | sort -u | head -1)"
 [ "$published" = "$PORT" ] || die "$FLOCI publishes port '${published:-none}', expected $PORT - refusing to mix environments" 3
 ok "$FLOCI publishes 4566 on host port $PORT only (environment separation)"
+# Exposure check (warning only, exit code unchanged): Floci accepts its default
+# admin credentials and unsigned S3 reads, so it must be bound to loopback.
+hostips="$(docker inspect -f '{{range $p,$b := .HostConfig.PortBindings}}{{if eq $p "4566/tcp"}}{{range $b}}[{{.HostIp}}] {{end}}{{end}}{{end}}' "$FLOCI")"
+if echo "$hostips" | tr ' ' '\n' | grep -v '^$' | grep -qvE '^\[(127\.0\.0\.1|::1)\]$'; then
+  echo "  [WARN] $FLOCI publishes port $PORT on non-loopback addresses $hostips - reachable from the LAN/tailnet;"
+  echo "         recreate it from infra/floci/docker-compose.yml (127.0.0.1:$PORT:4566) in a planned maintenance window"
+else
+  ok "$FLOCI bound to loopback only"
+fi
 [ "$(docker inspect -f '{{.HostConfig.RestartPolicy.Name}}' "$FLOCI")" = unless-stopped ] \
   && ok "restart policy unless-stopped" || bad "restart policy of $FLOCI is not unless-stopped"
 docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$FLOCI" | grep -q '^FLOCI_SERVICES_IAM_ENFORCEMENT_ENABLED=true$' \

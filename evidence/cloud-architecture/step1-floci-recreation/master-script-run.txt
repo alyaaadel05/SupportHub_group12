@@ -1,0 +1,71 @@
+
+######## Private inputs -> infra/floci/.generated/production (git-ignored, owner-only)
+  production.env + existing worker keys in place (values not printed)
+
+######## Floci (supporthub-floci): loopback-only + Docker socket
+  supporthub-floci already compliant
+
+######## AWS resources, IAM, Secrets Manager, Lambda (idempotent)
+  [PASS] Floci reachable on floci_default (no host port)
+
+==> S3 buckets
+  [PASS] bucket supporthub-article-backups (Block Public Access on)
+  [PASS] bucket supporthub-search-analytics-exports (Block Public Access on)
+
+==> SQS production queue + DLQ
+  [PASS] queue supporthub-article-events-production -> DLQ supporthub-article-events-production-dlq after 5 receives
+
+==> SNS topics and DynamoDB table
+  [PASS] topic supporthub-editorial-publication-events
+  [PASS] topic supporthub-identity-security-alerts
+  [PASS] table supporthub-search-counters
+
+==> Secrets Manager (values from infra/floci/.generated/production/production.env, never printed)
+  [PASS] secret supporthub/article/database created
+  [PASS] secret supporthub/editorial/database created
+  [PASS] secret supporthub/shared/service-hmac created
+
+==> IAM users (scoped policies, one key each, keys never rotated or printed)
+  [PASS] IAM user supporthub-prod-article-publisher (2 policies, key in infra/floci/.generated/production/article.aws.env)
+  [PASS] IAM user supporthub-prod-editorial-consumer (3 policies, key in infra/floci/.generated/production/editorial.aws.env)
+  Vercel-facing IAM users skipped (SUPPORTHUB_SKIP_VERCEL_USERS=true): no policy change, no new key
+
+==> Lambda publication-outcome (SNS subscriber, writes receipts to Neon)
+  [PASS] role supporthub-editorial-publication-outcome-role (own log group only)
+  [PASS] Lambda package built (infra/floci/.generated/production/publication-outcome.zip, public CA)
+  [PASS] Lambda supporthub-editorial-publication-outcome created
+  [PASS] SNS -> Lambda subscription created
+
+==> Summary
+  16 passed, 0 failed. Key files (600, never commit): article.aws.env editorial.aws.env 
+
+######## ECS cluster + three workers (desiredCount 0)
+==> Secrets (component keys for the tasks; values never printed)
+  [PASS] secret supporthub/ecs/article-worker-credentials created
+  [PASS] secret supporthub/ecs/editorial-worker-credentials created
+==> IAM roles (scoped; enforced by real ECS, documented for Floci)
+  [PASS] role supporthub-ecs-execution policy SupportHubEcsReadTaskSecrets
+  [PASS] role supporthub-article-worker-task policy SupportHubArticleWorker
+  [PASS] role supporthub-editorial-worker-task policy SupportHubEditorialWorker
+==> Cluster and task definitions
+  [PASS] cluster supporthub-workers created
+  [PASS] task definition supporthub-article-outbox-worker:1
+  [PASS] service article-outbox-worker created
+  [PASS] task definition supporthub-editorial-article-consumer:1
+  [PASS] service editorial-article-consumer created
+  [PASS] task definition supporthub-editorial-publication-worker:1
+  [PASS] service editorial-publication-worker created
+==> Waiting until every service runs 0 task(s) (max 90 s)
+  [PASS] 3/3 ECS worker services at runningCount=0
+== ECS cluster supporthub-workers on http://127.0.0.1:4566
+  article-outbox-worker	ACTIVE	0	0	arn:aws:ecs:us-east-1:000000000000:task-definition/supporthub-article-outbox-worker:1
+  editorial-article-consumer	ACTIVE	0	0	arn:aws:ecs:us-east-1:000000000000:task-definition/supporthub-editorial-article-consumer:1
+  editorial-publication-worker	ACTIVE	0	0	arn:aws:ecs:us-east-1:000000000000:task-definition/supporthub-editorial-publication-worker:1
+container floci-aws-ecs-3ebb08c94e4c4180b107cd5c2c015050-editorial-article-consumer Up 3 minutes
+container floci-aws-ecs-95489a0259f74c63a761e69b1660817d-article-outbox-worker Up 4 minutes
+container floci-aws-ecs-853f284d87514c7f8a48dea32703bfc7-editorial-publication-worker Up 4 minutes
+Summary: 13 passed, 0 failed
+
+######## Summary
+  Floci: healthy, ports 4566/tcp -> 127.0.0.1:4566 
+  ECS workers deployed IDLE. Start them at the approved cutover: --start-workers (or cutover.sh).

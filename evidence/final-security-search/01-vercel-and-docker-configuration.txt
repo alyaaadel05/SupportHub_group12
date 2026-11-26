@@ -1,0 +1,129 @@
+SupportHub Group 12 - Final security & search - Task 1
+01 - Vercel services and Docker worker database configuration (READ-ONLY)
+==========================================================================
+
+TEST OBJECTIVE
+  Confirm that each deployed Vercel service uses its own restricted Neon role
+  (supporthub_article_app / _identity_app / _editorial_app / _search_app) on the production
+  pooled endpoint with TLS, that no service uses the Neon owner role or the revoked password,
+  that the deployed health endpoints work, and that the production Docker workers are
+  consistent with the deployed services. HTTP 200 alone is not treated as proof.
+
+ENVIRONMENT
+  Date (UTC) 2026-11-26 12:48-13:10Z ; Windows 11, Git Bash, Node 26
+  Prior evidence reused (not repeated): evidence/production-security/database-credential-rotation.txt,
+  evidence/security-automation/01-production-configuration-verification.txt (24 PASS; worker
+  env == private files, live current_user per worker, revoked value found nowhere).
+  Mode: READ-ONLY. No redeploy, no Vercel/Cloudflare change, no credential printed or rotated.
+
+--------------------------------------------------------------------------
+1. VERCEL ENVIRONMENT VARIABLES - NOT VERIFIABLE FROM HERE
+--------------------------------------------------------------------------
+  The Vercel CLI is not installed. An attempt to run it through npx (to reuse the existing
+  login found in %APPDATA%\com.vercel.cli, without printing values) was BLOCKED by the
+  session's permission policy; no workaround was attempted. The variables stored in the four
+  Vercel projects were therefore NOT read.                                    NOT VERIFIED (manual)
+
+--------------------------------------------------------------------------
+2. INTENDED VALUES (private files outside the repo; non-secret parts only)
+--------------------------------------------------------------------------
+  Command: node parsing %LOCALAPPDATA%\SupportHub\database-security\*.database.env (role, db,
+           masked host, URL parameters; password never printed)
+  article.database.env    DATABASE_URL_POOLED role=supporthub_article_app   db=neondb host=ep-steep-mouse-****-pooler.c-7.eu-central-1.aws.neon.tech sslmode=verify-full&channel_binding=require
+  identity.database.env   DATABASE_URL_POOLED role=supporthub_identity_app  (same db/host/params)
+  editorial.database.env  DATABASE_URL_POOLED role=supporthub_editorial_app (same db/host/params)
+  search.database.env     DATABASE_URL_POOLED role=supporthub_search_app    (same db/host/params)
+  editorial.vercel.env    NODE_ENV,COOKIE_SECURE,FRONTEND_ORIGIN,ARTICLE_SERVICE_URL,DATABASE_URL_POOLED,
+                          SERVICE_SHARED_SECRET ; role=supporthub_editorial_app (same db/host/params)
+  -> one restricted role per service, production pooled endpoint, verify-full TLS + channel
+     binding, no owner role.                                                   PASS (intended config)
+
+--------------------------------------------------------------------------
+3. DEPLOYED HEALTH ENDPOINTS (GET only)
+--------------------------------------------------------------------------
+  curl https://<project>.vercel.app/api/health
+  supporthub-article-service.vercel.app           200 {"status":"ok","service":"article-service"}                       PASS
+  supporthub-identity-service.vercel.app          200 {"status":"ok","service":"identity-service","database":"connected"} PASS
+  supporthub-editorial-service-group1.vercel.app  200 {"status":"ok","service":"editorial-service"}  (runs SELECT 1)      PASS
+  supporthub-search-analytics-group12.vercel.app  200 {"status":"ok","service":"search-analytics-service","database":"connected"} PASS
+  (alias supporthub-search-analytics.vercel.app   200 same body)
+  Note: the project name "supporthub-editorial-service-group12" has no such domain
+  (DEPLOYMENT_NOT_FOUND); the Vercel domain is supporthub-editorial-service-group1.vercel.app
+  (Vercel project name truncated, as recorded in the earlier evidence).
+  FINDING F1: a SECOND, older deployment https://supporthub-editorial-service.vercel.app/api/health
+  returns 500 {"error":"Internal server error"} - its handler runs SELECT 1, so this project
+  cannot reach the database (consistent with an outdated credential, possibly the revoked owner
+  password). It must not be the EDITORIAL_ORIGIN used by Cloudflare Pages. Which editorial
+  origin Pages uses could not be determined without a login session.          NOT VERIFIED (manual)
+  Cloudflare Pages proxy https://supporthub-group12.pages.dev: /api/auth/csrf 200,
+  /api/editorial/flags (no session) 401.
+
+--------------------------------------------------------------------------
+4. DATABASE-SIDE EVIDENCE OF THE ROLES ACTUALLY CONNECTED (production, read-only)
+--------------------------------------------------------------------------
+  Command: node tests/integration/production-readonly-db-check.mjs roles  (before and after
+           calling the 5 health URLs above; restricted search role, READ ONLY transaction)
+  Connection: current_user=supporthub_search_app, transaction_read_only=on, client TLSv1.3,
+              server certificate verified.
+  pg_stat_activity sessions by role, BEFORE (13:09:18Z) and AFTER the health calls (13:09:28Z):
+    supporthub_article_app 1, supporthub_editorial_app 1, supporthub_identity_app 1,
+    supporthub_search_app 1 (backend_start hidden for other roles - not superuser)
+    NO session for neondb_owner or any other role.
+  Role attributes: all supporthub_*_app roles rolsuper=false, rolcreaterole=false,
+    rolcreatedb=false, rolbypassrls=false; neondb_owner exists (createrole/createdb/bypassrls)
+    but had no session.
+  Interpretation:
+    - supporthub_identity_app is used by no local production container -> its session is the
+      deployed Identity service: Identity uses its restricted role.            PASS
+    - After successful health calls to all four deployments (each touches the DB), no owner
+      session exists -> none of the working deployments connects as neondb_owner.  PASS (strong indication)
+    - Article/Editorial sessions may also come from the local production workers and the Search
+      session may be this check's own pooled connection, so for these three services the role is
+      indicated, not proven.                                                   NOT VERIFIED (manual)
+    - Revoked password: every working deployment authenticates with a currently valid credential;
+      the revoked owner password is rejected by Neon (rotation evidence), so none of the four
+      healthy deployments can be using it. The 500 deployment in F1 may be.   PASS for the four / F1 open
+
+--------------------------------------------------------------------------
+5. DOCKER PRODUCTION WORKERS - consistency re-check (read-only, hashes only)
+--------------------------------------------------------------------------
+  docker inspect env vs %LOCALAPPDATA%\SupportHub\production-workers\<svc>.restricted.env vs the
+  prepared Vercel value database-security\<svc>.database.env (sha256 prefix of DATABASE_URL_POOLED):
+  supporthub-prod-article-outbox-worker    running, restarts=0, started 03:35:10Z, role supporthub_article_app,
+                                           c4349ea21645 = c4349ea21645 = c4349ea21645          PASS
+  supporthub-prod-editorial-article-worker running, restarts=0, started 03:35:10Z, role supporthub_editorial_app,
+                                           7b2150f1d5a5 = 7b2150f1d5a5 = 7b2150f1d5a5          PASS
+  -> workers use exactly the value prepared for the matching Vercel service.
+
+--------------------------------------------------------------------------
+RESULTS
+--------------------------------------------------------------------------
+  Intended per-service configuration (role, endpoint, TLS, no owner)     PASS
+  Four deployed health endpoints                                          PASS (4/4)
+  No owner-role session after exercising all deployments                  PASS
+  Identity deployment uses supporthub_identity_app (DB-side)              PASS
+  Docker workers consistent with prepared Vercel values                   PASS (2/2)
+  Vercel-stored DATABASE_URL_POOLED per project                           NOT VERIFIED (Vercel access blocked)
+  Old editorial deployment returns 500 (F1)                               OPEN - manual
+  Totals: 11 PASS, 0 FAIL, 3 NOT VERIFIED.  STATUS: PARTIAL
+  DEFECTS/FINDINGS: F1 (stale Vercel project). CHANGES: none for this task (read-only tool
+  tests/integration/production-readonly-db-check.mjs is shared with Task 4).
+
+--------------------------------------------------------------------------
+MANUAL VERIFICATION REQUIRED (no redeploy, no edits)
+--------------------------------------------------------------------------
+  Vercel dashboard: https://vercel.com/dashboard -> select the project -> Settings ->
+  Environment Variables -> filter "Production" -> click the eye icon of DATABASE_URL_POOLED
+  (and DATABASE_URL if present) and check ONLY the user part between "//" and ":" and the host:
+    supporthub-article-service           -> supporthub_article_app
+    supporthub-identity-service          -> supporthub_identity_app
+    supporthub-editorial-service-group12 (domain ...-group1.vercel.app) -> supporthub_editorial_app
+    supporthub-search-analytics-group12  -> supporthub_search_app
+  For each: host must be the production ep-steep-mouse-...-pooler endpoint, the URL must end
+  with sslmode=verify-full&channel_binding=require, no variable may contain neondb_owner.
+  Then Deployments tab: the current Production deployment must be dated AFTER 2026-11-26
+  04:22 UTC (rotation) so it runs with these values.
+  Old project: open the project behind https://supporthub-editorial-service.vercel.app, confirm
+  it is not used (Cloudflare Pages -> supporthub-group12 -> Settings -> Environment variables ->
+  EDITORIAL_ORIGIN must be https://supporthub-editorial-service-group1.vercel.app), then
+  consider removing its database variable or pausing/deleting that project (your decision).

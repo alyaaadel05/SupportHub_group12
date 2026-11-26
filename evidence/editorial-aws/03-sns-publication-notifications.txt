@@ -1,0 +1,295 @@
+SupportHub Group 12 - Phase 4 Editorial (Salma) - Task 2 (part 2)
+03 - SNS publication notifications (application -> outbox -> worker -> SNS -> subscriber)
+==========================================================================
+
+TEST OBJECTIVE
+  Verify, from actual execution (no mocks), that publishing an article through
+  the application produces exactly one SNS publication notification with the
+  correct payload, article ID, event type and timestamp, delivered to topic
+  subscribers; that duplicate publications are safe; that SNS / worker
+  failures do not lose notifications; and that retry and recovery work.
+
+ENVIRONMENT
+  Date (UTC)  : 2026-11-26 - baseline 05:37:31Z, recovery retest 05:46:07Z, follow-up 05:52:47Z
+  Stack       : ISOLATED supporthub-iso-* ; Floci 2.5.0 http://localhost:4567 ; Postgres supporthub-iso-postgres
+  Entry point : http://localhost:8188 (proxy) ; internal endpoint http://127.0.0.1:3207 (isolated Editorial)
+  Publisher   : supporthub-iso-editorial-publication-worker with the dedicated Editorial IAM key
+                (see 02); EDITORIAL_PUBLICATION_TOPIC_ARN=...:supporthub-editorial-publication-events
+  Observation subscriber:
+    VERIFICATION-ONLY SQS queue supporthub-editorial-publication-audit subscribed
+    to the topic (protocol sqs, non-raw delivery, so the full SNS envelope incl.
+    Timestamp and MessageAttributes is visible). Created with Floci admin in the
+    isolated Floci only; UNSUBSCRIBED at the end (topic back to its single Lambda
+    subscription; the empty queue remains). The intended subscriber is the Lambda
+    supporthub-editorial-publication-outcome; Lambda execution/receipts = Task 3 (PENDING).
+  Disruptive steps (isolated only; production containers untouched):
+    docker stop/start supporthub-iso-editorial-publication-worker,
+    docker restart supporthub-iso-editorial, docker stop/start supporthub-iso-floci
+
+COMMANDS
+  node tests/integration/editorial-sns-check.mjs baseline
+  node tests/integration/editorial-sns-check.mjs recovery
+  Application requests: POST /api/articles, POST /api/articles/:id/submit,
+    POST /api/articles/:id/reviews, PATCH /api/articles/:id/publication (editor session + CSRF)
+  Observation: aws --endpoint-url http://localhost:4567 sqs receive-message / delete-message (audit queue, admin)
+               docker exec supporthub-iso-postgres psql ... editorial_publication_event_outbox
+               docker logs supporthub-iso-editorial-publication-worker
+  Recovery endpoint:
+    curl -X POST -H "Authorization: Bearer <CRON_SECRET redacted>" -H "Content-Type: application/json" \
+      -d '{"eventId":"<uuid>"}' http://127.0.0.1:3207/internal/retry-publication-events
+    (CRON_SECRET read from isolated Secrets Manager supporthub/editorial/runtime into a variable, never printed)
+
+--------------------------------------------------------------------------
+BASELINE RUN - full transcript (41 passed, 4 failed)
+--------------------------------------------------------------------------
+Editorial SNS publication notification check (baseline) - 2026-11-26T05:37:31.917Z
+Proxy http://localhost:8188  Editorial http://127.0.0.1:3207  Floci http://localhost:4567  DB supporthub-iso-postgres  token snscheck20261126t053731915z
+     subscriptions: lambda arn:aws:lambda:us-east-1:000000000000:function:supporthub-editorial-publication-outcome sqs arn:aws:sqs:us-east-1:000000000000:supporthub-editorial-publication-audit
+     audit queue drained before test (0 older messages: none)
+PASS | login author | HTTP 200 id=1
+PASS | login editor | HTTP 200 id=3
+PASS | login editor2 | HTTP 200 id=4
+
+== A. Publication notification triggered by a real publish
+PASS | article 239 created, submitted (SQS ok) and approved | HTTP 201
+PASS | editor publishes article 239 (real application action) | HTTP 200 
+PASS | publication event queued in outbox in the publish transaction and published by the worker | state=published attempts=1 after 4.8 s
+PASS | payload eventType = editorial.publication.published
+FAIL | payload articleId = published article | articleId=239
+FAIL | payload publishedBy = publishing editor | publishedBy=3
+PASS | payload occurredAt is ISO-8601 and within the publish window | 2026-11-26T05:37:51.414Z
+PASS | payload eventId is a UUID equal to the outbox primary key | 663d380c-ae1f-4e04-adb8-e54734697a93
+PASS | SNS delivered the notification to a topic subscriber (audit SQS) | after 10.5 s
+     SNS envelope: Type=Notification MessageId=0b865ab7-4443-4e14-a207-05bf3b5fb015 TopicArn=arn:aws:sns:us-east-1:000000000000:supporthub-editorial-publication-events Timestamp=2026-11-26T05:37:55.264Z
+     MessageAttributes: {"eventId":{"Type":"String","Value":"663d380c-ae1f-4e04-adb8-e54734697a93"},"eventType":{"Type":"String","Value":"editorial.publication.published"}}
+     Message: {"data":{"articleId":239,"publishedBy":3},"eventId":"663d380c-ae1f-4e04-adb8-e54734697a93","eventType":"editorial.publication.published","occurredAt":"2026-11-26T05:37:51.414Z"}
+PASS | envelope Type=Notification from the publication topic
+PASS | delivered Message is byte-identical to the outbox payload
+PASS | MessageAttributes eventType/eventId match the payload
+PASS | SNS Timestamp is after the event occurredAt | 2026-11-26T05:37:51.414Z -> 2026-11-26T05:37:55.264Z
+PASS | worker log records the same SNS MessageId (publish used the Editorial key) | Publication event batch: {"recovered":0,"results":[{"status":"published","messageId":"0b865ab7-4443-4e14-a207-05bf3b5fb015"}]}
+
+== B. Duplicate publication is handled safely
+PASS | second publish of the same article -> 409, no new event | HTTP 409 Article must be approved first
+PASS | publish by another editor -> 409 | HTTP 409 Article must be approved first
+PASS | still exactly one outbox event for the article | rows=1
+PASS | subscriber received exactly ONE notification for the event | deliveries=1
+PASS | editorial_publication_event_outbox.event_id is the primary key (DB-level duplicate guard)
+
+== C. Worker and Editorial restart: notification is durable, not lost
+PASS | article 240 created, submitted (SQS ok) and approved | HTTP 201
+     2026-11-26T05:38:22.957Z docker stop supporthub-iso-editorial-publication-worker
+PASS | editor publishes article 240 (real application action) | HTTP 200 
+PASS | with the worker stopped the event stays durable in the outbox (pending, 0 attempts) | state=pending attempts=0
+PASS | nothing was delivered while the worker was stopped
+     2026-11-26T05:38:48.038Z docker restart supporthub-iso-editorial (API restart)
+PASS | [Task 1 persistence] open re-review flag #3 (article 233) survived the Editorial restart | HTTP 200
+PASS | [Task 1] flag #3 resolved through the API after the restart | HTTP 200
+     2026-11-26T05:38:49.528Z docker start supporthub-iso-editorial-publication-worker
+PASS | after worker restart the pending event is published | after 1.3 s attempts=1
+PASS | subscriber received the recovered notification exactly once | deliveries=1
+
+== D. Short SNS outage: failure recorded, automatic retry with backoff
+PASS | article 241 created, submitted (SQS ok) and approved | HTTP 201
+     2026-11-26T05:39:09.558Z docker stop supporthub-iso-floci
+PASS | editor publishes article 241 (real application action) | HTTP 200 
+PASS | SNS failure recorded on the event (attempts incremented, last_error stored, state pending) | state=pending attempts=1 last_error="getaddrinfo EAI_AGAIN floci" after 16.4 s
+     next retry scheduled in 4 s
+PASS | worker logged the failed attempt (not silent) | Publication event batch: {"recovered":0,"results":[{"status":"published","messageId":"1f986a57-3656-44bd-b717-e5cac7e5e201"}]} / Publication event batch: {"recovered":0,"results":[{"status":"pending","attempts":1,"retryI
+     2026-11-26T05:39:36.650Z docker start supporthub-iso-floci
+PASS | isolated Floci healthy again (persistent storage) | after 1.0 s
+PASS | event published automatically after SNS recovered | after 0.2 s, attempts=2
+PASS | subscriber received the retried notification exactly once | deliveries=1
+
+== E. Long SNS outage: retries exhausted, event kept as 'failed'
+PASS | article 242 created, submitted (SQS ok) and approved | HTTP 201
+     2026-11-26T05:39:56.421Z docker stop supporthub-iso-floci
+PASS | editor publishes article 242 (real application action) | HTTP 200 
+FAIL | after 5 failed attempts the event is persisted as 'failed' (not deleted) | state=undefined attempts=undefined last_error="undefined" after 241.3 s
+     2026-11-26T05:43:58.205Z docker start supporthub-iso-floci
+PASS | isolated Floci healthy again (persistent storage) | after 1.0 s
+PASS | article itself stays published (notification failure does not roll back publication)
+     after SNS recovered: state=failed attempts=5; delivered=0
+     FAILED_EVENT_ID=35b3c114-4834-47c8-8bbe-5ebb901f7ebe FAILED_ARTICLE_ID=242
+
+== E2. Is there a supported recovery path for a failed notification?
+PASS | existing protected retry endpoint answers | HTTP 200
+PASS | existing retry endpoint (Search outbox only) does NOT recover the failed SNS event | state=failed
+FAIL | an authenticated recovery path for failed SNS notifications exists | HTTP 404 {"error":"Route not found"}
+
+Total: 41 passed, 4 failed
+
+ANALYSIS OF THE 4 BASELINE FAILURES
+  1-2) "payload articleId" / "payload publishedBy": TEST BUG. The values are
+       correct (articleId=239, publishedBy=3; see the delivered Message above).
+       The test compared the numeric payload with ids the API returns as strings.
+       Fixed with Number(...) in the script; not re-run (the delivered message
+       above already proves the values).
+  3)   "after 5 failed attempts ... 'failed'": TEST TIMING. The 240 s poll was too
+       short: each failed attempt takes ~40 s because the SDK retries the DNS
+       failure "getaddrinfo EAI_AGAIN floci" before giving up, plus the 5/10/20/40 s
+       backoff. The line after the Floci restart shows the real result:
+       state=failed attempts=5, delivered=0 (event 35b3c114-..., article 242).
+       Not repeated (long outage, ~5 min).
+  4)   "an authenticated recovery path for failed SNS notifications exists": REAL DEFECT D3.
+
+DEFECT FOUND
+  D3 (FIXED) A publication notification whose automatic retries were exhausted
+     stayed 'failed' forever. Nothing re-sent it: the existing protected endpoint
+     /internal/retry-notifications only handles the Search outbox (verified above:
+     state stayed 'failed'), and the worker only claims 'pending' rows. The event
+     was persisted (not deleted) but the downstream subscriber never received it.
+
+CHANGES IMPLEMENTED (Claude-assisted, Phase 4)
+  services/editorial-service/services/publicationEventService.js
+    - new requeueFailed({eventId?, limit}): UPDATE ... SET state='pending', attempts=0,
+      next_attempt_at=NOW(), last_error='Requeued after N failed attempts: <previous error>'
+      WHERE state='failed' (optionally one eventId; FOR UPDATE SKIP LOCKED; max 100 rows).
+      The ORIGINAL eventId and payload are kept, so subscribers can still de-duplicate.
+      An invalid eventId returns 400 before any query.
+  services/editorial-service/server.js
+    - POST /internal/retry-publication-events, protected by the existing
+      requireCronSecret (Bearer CRON_SECRET, timing-safe compare), same pattern as
+      /internal/retry-notifications. Not routed by the browser proxy.
+  services/editorial-service/tests/publicationEventService.test.js - 3 new unit tests.
+  tests/integration/editorial-sns-check.mjs (new) - this verification.
+  Unit tests: npm test -> tests 183, pass 183, fail 0.
+  Deployed to the isolated stack only:
+    docker compose -f infra/floci/docker-compose.supporthub.yml build editorial
+    docker compose ... up -d --no-deps --no-build editorial editorial-article-worker editorial-publication-worker
+    docker exec supporthub-iso-editorial grep -c retry-publication-events server.js -> 1
+
+--------------------------------------------------------------------------
+RECOVERY RETEST (after fix) - transcript of the run
+--------------------------------------------------------------------------
+Editorial SNS publication notification check (recovery) - 2026-11-26T05:46:07.574Z
+Proxy http://localhost:8188  Editorial http://127.0.0.1:3207  Floci http://localhost:4567  DB supporthub-iso-postgres  token snscheck20261126t054607573z
+     subscriptions: lambda arn:aws:lambda:us-east-1:000000000000:function:supporthub-editorial-publication-outcome sqs arn:aws:sqs:us-east-1:000000000000:supporthub-editorial-publication-audit
+     audit queue drained before test (0 older messages: none)
+PASS | login author | HTTP 200 id=1
+PASS | login editor | HTTP 200 id=3
+PASS | login editor2 | HTTP 200 id=4
+
+== R. Recovery of failed SNS notifications (POST /internal/retry-publication-events)
+PASS | a failed event from the baseline long-outage test is present | event=35b3c114-4834-47c8-8bbe-5ebb901f7ebe article=242
+PASS | no Authorization -> 401 | HTTP 401
+PASS | wrong cron secret -> 401 | HTTP 401
+PASS | endpoint is not exposed through the browser proxy | HTTP 405
+     (editor session cannot reach /internal; existing editor retry route answered HTTP 200)
+PASS | invalid eventId -> 400 | HTTP 400
+PASS | still failed after rejected requests
+PASS | authorized requeue -> 200, 1 event requeued | HTTP 200 {"requeued":1,"eventIds":["35b3c114-4834-47c8-8bbe-5ebb901f7ebe"]}
+FAIL | worker published the requeued event | after 308.5 s state=published attempts=1 last_error=""
+PASS | subscriber received the recovered notification exactly once | deliveries=1
+     SNS envelope: MessageId=e2a74d59-f2dd-4532-8850-77773a6fdbba Timestamp=2026-11-26T05:46:30.089Z
+     Message: {"data":{"articleId":242,"publishedBy":3},"eventId":"35b3c114-4834-47c8-8bbe-5ebb901f7ebe","eventType":"editorial.publication.published","occurredAt":"2026-11-26T05:39:56.459Z"}
+PASS | recovered notification keeps the ORIGINAL eventId / articleId / occurredAt
+PASS | repeating the requeue for a published event is a no-op (requeued 0) | {"requeued":0,"eventIds":[]}
+
+[killed]
+
+  NOTE ON THE RETEST RUN: after the authorized requeue the test harness itself
+  blocked for ~300 s inside a synchronous docker/aws child process and was
+  stopped (task stopped, stuck aws.exe killed). The "FAIL | worker published"
+  line is a HARNESS TIMEOUT, not a service failure: the database shows the
+  event was published 2 s after the requeue:
+    requeue response  ~05:46:28Z {"requeued":1,"eventIds":["35b3c114-4834-47c8-8bbe-5ebb901f7ebe"]}
+    outbox row        state=published attempts=1 last_error='' published_at=2026-11-26 05:46:30.151Z
+    worker log        Publication event batch: {"recovered":0,"results":[{"status":"published",
+                      "messageId":"e2a74d59-f2dd-4532-8850-77773a6fdbba"}]}
+  The remaining recovery checks were run individually (05:52:47Z):
+    repeat requeue of the same (now published) event -> HTTP 200 {"requeued":0,"eventIds":[]}   PASS
+    outbox row unchanged (published, attempts=1, same published_at)                           PASS
+    all publication events: published=113 (no pending, processing or failed rows)            PASS
+    no further worker publish for the event (single "published" batch line)                  PASS
+    audit queue: ApproximateNumberOfMessages=0, NotVisible=0 (no extra delivery)             PASS
+  NOT VERIFIED: that the audit subscriber received the requeued notification
+    exactly once. The stuck harness may have received and deleted it before
+    hanging, and Floci 2.5.0 does not log SNS deliveries, so delivery of the
+    REQUEUED event to a subscriber cannot be proven from this run. SNS acceptance
+    of the publish (MessageId e2a74d59-...) is proven by the worker log. Delivery of
+    normal, worker-restart and auto-retried notifications IS proven (sections A, C, D).
+
+--------------------------------------------------------------------------
+RESULTS
+--------------------------------------------------------------------------
+  Notification triggered by a real publish (outbox in same transaction)   PASS
+  Payload eventType / articleId / publishedBy / occurredAt / eventId      PASS (values verified; 2 test-bug FAILs explained)
+  SNS envelope: Type=Notification, TopicArn, MessageAttributes, Timestamp PASS
+  Delivered Message byte-identical to the stored payload                  PASS
+  Publish performed with the dedicated Editorial key (worker MessageId)   PASS
+  Duplicate publication -> 409, one outbox row, one delivery              PASS
+  Worker stopped -> event durable (pending, 0 attempts), nothing lost     PASS
+  Editorial API restart; [Task 1] open flag #3 persisted and resolved     PASS
+  Worker restarted -> published, delivered exactly once                   PASS
+  Short SNS outage -> attempts/last_error recorded, worker logs it,
+    automatic retry with backoff, delivered exactly once                  PASS
+  Long SNS outage -> 'failed' after 5 attempts, article stays published   PASS (verified post-hoc; poll-timing FAIL explained)
+  Failed-notification recovery path                                       FAIL in baseline (D3) -> FIXED
+  Recovery endpoint: 401 without / with wrong secret, 400 bad id,
+    not reachable through the browser proxy                               PASS
+  Requeue -> worker publishes the ORIGINAL event                          PASS (DB + worker log)
+  Repeat requeue is a no-op; no duplicate publish                         PASS
+  Requeued notification delivered to subscriber exactly once              NOT VERIFIED (harness hang, see note)
+
+  Totals for this file:
+    Baseline         41 PASS / 4 FAIL (2 test bugs, 1 poll timing, 1 real defect D3)
+    Recovery retest  10 PASS / 1 harness-timeout FAIL (service verified published via DB and worker log)
+    Follow-up         5 PASS
+    Not verified      1
+
+REMAINING LIMITATIONS
+  - Requeue of 'failed' events is an operator / scheduler action (cron-secret
+    endpoint); no scheduler is configured in the isolated stack (same model as
+    the existing /internal/retry-notifications).
+  - The worker's SNS client has no explicit request timeout; with a hung (not
+    stopped) endpoint a publish could block the worker. Not tested, not changed.
+  - Subscriber evidence for sections A-D comes from a verification-only SQS
+    subscription (removed afterwards). Lambda delivery and receipts = Task 3 (PENDING).
+  - Code changes exist only in the working tree and the isolated stack; nothing was
+    deployed to Neon, Vercel, Cloudflare or production containers.
+
+==========================================================================
+ADDENDUM - resumed session 2026-11-26 (after laptop sleep), read-only checks
+==========================================================================
+  Environment re-verified (no container restarted): Docker engine 29.9.3;
+  isolated Floci :4567 healthy; supporthub-iso-* services healthy; proxy :8188 HTTP 200;
+  no leftover aws/node/k6 processes from the interrupted run.
+  SNS topology: exactly one subscription on supporthub-editorial-publication-events
+    lambda  arn:aws:lambda:us-east-1:000000000000:function:supporthub-editorial-publication-outcome
+    (verification-only SQS audit subscription remains removed)                       PASS
+  Outbox: published=113 ; receipts table: 113 rows ; outbox events without receipt: 0  PASS
+  Recovered (requeued) event 35b3c114-4834-47c8-8bbe-5ebb901f7ebe (article 242):
+    outbox published_at  2026-11-26 05:46:30.151Z
+    Lambda receipt       processed_at 2026-11-26 05:51:41.565Z, article_id 242,
+                         event_type editorial.publication.published
+    -> the INTENDED subscriber (Lambda) received the recovered notification and
+       persisted exactly one receipt.                                                 PASS
+       Observation: the receipt was written ~5 min after the publish (overlapping the
+       harness hang); the cause of the delay is not established from Floci logs.
+  A fresh recovered-event test with bounded commands follows in 04 / 06.
+
+==========================================================================
+ADDENDUM 2 - recovered-notification SUBSCRIBER DELIVERY, fresh event (resolves the NOT VERIFIED item)
+  Command: node tests/integration/editorial-lambda-check.mjs recover  (outer timeout 570 s, every
+  child process time-limited, bounded polling; observable subscriber = the intended Lambda receipt)
+==========================================================================
+
+######## editorial-lambda-check phase=recover - 2026-11-26T12:36:33.558Z (token lambdacheck20261126t123633554z)
+PASS | fresh article 246 created, submitted via SQS and approved | queue after 4.1 s, approve HTTP 201
+     2026-11-26T12:36:42.410Z docker stop supporthub-iso-floci -> ok
+PASS | editor publishes article 246 through the application | HTTP 200 
+PASS | SNS unavailable: event persisted as 'failed' after 5 attempts | state=failed attempts=5 after 179.1 s last_error="getaddrinfo EAI_AGAIN floci"
+     2026-11-26T12:39:42.176Z docker start supporthub-iso-floci -> ok
+PASS | isolated Floci healthy after start | after 2.0 s
+PASS | no receipt while the event is failed
+PASS | authorized requeue of the failed event | HTTP 200 {"requeued":1,"eventIds":["05376df7-ff95-4787-886e-d48716126c4c"]}
+PASS | requeued event published by the worker | after 7.0 s attempts=1
+PASS | RECOVERED notification reached its subscriber: Lambda receipt written | after 0.3 s: 05376df7-ff95-4787-886e-d48716126c4c|246|editorial.publication.published|2026-11-26 12:39:53.781544+00
+PASS | receipt matches the ORIGINAL event (eventId, articleId)
+PASS | exactly one receipt
+     RECOVER_EVENT=05376df7-ff95-4787-886e-d48716126c4c RECOVER_ARTICLE=246
+phase recover: 10 passed, 0 failed, 0 not verified
+  RESULT: recovered notification publishing                 PASS (verified earlier and again here)
+          recovered notification delivery to the subscriber    PASS (fresh event 05376df7-..., receipt 0.3 s after publish)
+  The earlier "NOT VERIFIED" line (audit SQS subscriber, harness hang) is superseded by this test.

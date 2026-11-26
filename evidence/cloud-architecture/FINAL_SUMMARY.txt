@@ -1,0 +1,57 @@
+SupportHub Group 12 - Instructor feedback: cloud architecture improvements - SUMMARY
+==========================================================================
+Date (UTC) 2026-11-26 13:30-14:20Z ; branch integration/group12-final ; nothing committed,
+pushed, merged or deployed; no paid resource created; production untouched.
+
+STATUS
+  Task 1 Architecture audit ................................ COMPLETED (01)
+  Task 2 Remove laptop dependencies ........................ DESIGNED + VERIFIED IN ISOLATION; deployment needs authorization
+  Task 3 ECS orchestration of the 3 workers ................ COMPLETED in the isolated Floci (02); remote VM pending
+         ECS for the 4 APIs ............................... EVALUATED, not recommended (02, remote/README)
+  Task 4 Vercel <-> Floci communication .................... APPLICATION SIDE VERIFIED with a stand-in gate (03);
+                                                              real Cloudflare edge + Vercel NOT VERIFIED (needs domain/VM)
+  Task 5 AWS services per student .......................... AUDITED: Alyaa 6 (1 partial), Salma 7, Nermeen 5 (04)
+  Task 6 Production architecture diagram ................... COMPLETED (target architecture; docs/architecture/)
+  Task 7 Public end-to-end verification of the new setup ... NOT STARTED - requires the remote deployment
+  Lab 10 ................................................... skipped per instruction (cloud-course Lab 10 not on this machine)
+
+KEY VERIFIED FACTS
+  - Floci 2.5.0 runs ECS tasks and services as REAL containers; killed tasks replaced in ~10-16 s;
+    services restored after a Floci restart (~4.5 min restart time).
+  - The three real workers ran as ECS services with their own component IAM keys and completed two
+    full lifecycles (create -> SQS -> review -> publish -> SNS -> Lambda receipt): 10/10 + 10/10.
+  - Vercel-side SDK traffic can be gated by Cloudflare Access service-token headers without breaking
+    SigV4: 6/6 in the isolated gate test; Floci unreachable without the gate.
+  - Emulator limitation found and compensated: Floci ignores ECS task roles and injects admin keys.
+
+NEW FILES
+  infra/floci/ecs/deploy-ecs-workers.sh
+  infra/floci/ecs/task-definitions/{article-outbox-worker,editorial-article-consumer,editorial-publication-worker}.json
+  infra/iam/{ecs-execution-secrets-policy,article-worker-task-policy,editorial-worker-task-policy}.json
+  infra/floci/remote/{docker-compose.remote.yml,README.md,access-gate-sim.js}
+  services/{article,identity,search-analytics}-service/config/flociAccess.js
+  services/search-analytics-service/tests/floci-access.test.js
+  tests/integration/floci-access-gate-check.sh
+  docs/architecture/supporthub_production_architecture.{py,png,svg,pdf}
+  evidence/cloud-architecture/{01..04,FINAL_SUMMARY}.txt
+MODIFIED
+  services/search-analytics-service/services/awsClients.js   (withFlociAccess on 3 clients)
+  services/article-service/services/s3Client.js              (withFlociAccess)
+  services/identity-service/services/securityAlerts.js       (withFlociAccess)
+  Unit tests: search 110/110, article 64/64, identity 32/32.
+
+ISOLATED ENVIRONMENT STATE (left running for review)
+  ECS cluster supporthub-workers with 3 services (rev 3) in supporthub-iso-floci; the compose workers
+  supporthub-iso-{article-outbox-worker,editorial-article-worker,editorial-publication-worker} are
+  STOPPED (not removed). To switch back:
+    bash infra/floci/ecs/deploy-ecs-workers.sh --env isolated --scale 0
+    docker start supporthub-iso-article-outbox-worker supporthub-iso-editorial-article-worker supporthub-iso-editorial-publication-worker
+  Probe cluster/secret removed. Images rebuilt: supporthub-int-search:local (isolated only).
+
+DECISIONS NEEDED FROM YOU (see infra/floci/remote/README.md)
+  1. Remote VM: Oracle Always Free Arm (EUR 0, capacity risk, reduced 2026 allowance) or a small
+     paid VM (~EUR 4-6 / USD 6 per month; verify price).
+  2. A domain on Cloudflare for the Tunnel + Access hostname (~USD 10/year, or an existing one).
+  3. Permission to set Vercel env vars (Article, Identity, Search) and redeploy.
+  4. Permission to stop the laptop production workers after the remote setup is verified.
+  5. Confirm: keep the 4 APIs on Vercel (recommended) rather than moving them into ECS.

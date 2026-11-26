@@ -131,15 +131,21 @@ test("lists open flags and preserves them when Article Service is unavailable", 
 });
 
 test("resolves a flag and records reviewer and resolution", async () => {
-  const pool = makePool(async (sql, params) => ({
-    rows: [{
-      flag_id: params[0],
-      status: "resolved",
-      resolved_by: params[1],
-      resolution: params[2],
-      resolved_at: new Date()
-    }]
-  }));
+  const pool = makePool(async (sql, params) => {
+    if (sql.includes("SELECT flag_id, article_id, status")) {
+      return { rows: [{ flag_id: params[0], article_id: 20, status: "open" }] };
+    }
+
+    return {
+      rows: [{
+        flag_id: params[0],
+        status: "resolved",
+        resolved_by: params[1],
+        resolution: params[2],
+        resolved_at: new Date()
+      }]
+    };
+  });
 
   const service = createFlagService({
     pool,
@@ -153,7 +159,7 @@ test("resolves a flag and records reviewer and resolution", async () => {
   assert.equal(result.status, "resolved");
   assert.equal(result.resolved_by, 10);
   assert.equal(result.resolution, "Content was reviewed and corrected");
-  assert.match(pool.calls[0].sql, /status = 'open'/);
+  assert.match(pool.calls[1].sql, /status = 'open'/);
 });
 
 test("requires a non-empty resolution explanation", async () => {
@@ -192,7 +198,7 @@ test("returns 404 when resolving a nonexistent flag", async () => {
     error => error instanceof HttpError && error.status === 404
   );
 
-  assert.equal(pool.calls.length, 2);
+  assert.equal(pool.calls.length, 1);
 });
 
 test("returns 409 when a flag was already resolved", async () => {
@@ -213,6 +219,108 @@ test("returns 409 when a flag was already resolved", async () => {
     service.resolve(1, reviewer, {
       resolution: "Reviewed"
     }),
+    error => error instanceof HttpError && error.status === 409
+  );
+});
+
+// ---- Phase 4: one open re-review per article, no self re-review ----
+
+test("a repeated report returns the existing open flag instead of a new re-review", async () => {
+  const pool = makePool(async sql => {
+    if (sql.includes("INSERT INTO editorial_outdated_flags")) {
+      assert.match(sql, /ON CONFLICT \(article_id\) WHERE status = 'open' DO NOTHING/);
+      return { rows: [] };
+    }
+
+    return { rows: [{ flag_id: 7, article_id: 20, status: "open", flagged_by: 11 }] };
+  });
+
+  const service = createFlagService({
+    pool,
+    getArticle: async id => ({ id, status: "published" })
+  });
+
+  const result = await service.flag(20, reviewer, { reason: "Still outdated" });
+
+  assert.equal(result.flag_id, 7);
+  assert.equal(result.duplicate, true);
+  assert.equal(pool.calls.length, 2);
+});
+
+test("a new report on an article without an open flag is not a duplicate", async () => {
+  const pool = makePool(async (sql, params) => ({
+    rows: [{ flag_id: 8, article_id: params[0], status: "open" }]
+  }));
+
+  const service = createFlagService({
+    pool,
+    getArticle: async id => ({ id, status: "published" })
+  });
+
+  const result = await service.flag(20, reviewer, { reason: "Outdated" });
+
+  assert.equal(result.duplicate, false);
+  assert.equal(pool.calls.length, 1);
+});
+
+test("the author of an article cannot resolve its re-review", async () => {
+  const pool = makePool(async sql => {
+    if (sql.includes("SELECT flag_id, article_id, status")) {
+      return { rows: [{ flag_id: 1, article_id: 20, status: "open" }] };
+    }
+
+    throw new Error("must not update");
+  });
+
+  const service = createFlagService({
+    pool,
+    getArticle: async id => ({ id, status: "published", author_id: reviewer.id })
+  });
+
+  await assert.rejects(
+    service.resolve(1, reviewer, { resolution: "Checked my own article" }),
+    error => error instanceof HttpError && error.status === 403
+  );
+
+  assert.equal(pool.calls.length, 1);
+});
+
+test("resolution fails closed when Article Service is unavailable", async () => {
+  const pool = makePool(async () => ({
+    rows: [{ flag_id: 1, article_id: 20, status: "open" }]
+  }));
+
+  const service = createFlagService({
+    pool,
+    getArticle: async () => {
+      throw new HttpError(503, "Article Service unavailable");
+    }
+  });
+
+  await assert.rejects(
+    service.resolve(1, reviewer, { resolution: "Reviewed" }),
+    error => error instanceof HttpError && error.status === 503
+  );
+
+  assert.equal(pool.calls.length, 1);
+});
+
+test("a re-review resolved concurrently by another editor returns 409", async () => {
+  const pool = makePool(async sql => {
+    if (sql.includes("SELECT flag_id, article_id, status")) {
+      return { rows: [{ flag_id: 1, article_id: 20, status: "open" }] };
+    }
+
+    return { rows: [] };
+  });
+
+  const service = createFlagService({
+    pool,
+    getArticle: async id => ({ id, status: "published", author_id: 99 })
+  });
+
+  await assert.rejects(
+    service.resolve(1, reviewer, { resolution: "Reviewed" }),
     error => error instanceof HttpError && error.status === 409
   );
 });
