@@ -54,10 +54,10 @@ function createHandler({ pool }) {
       [event.eventId, event.eventType, articleId]
     );
 
-    return {
-      eventId: event.eventId,
-      status: result.rowCount ? "processed" : "duplicate"
-    };
+    const status = result.rowCount ? "processed" : "duplicate";
+    // One structured line per record for CloudWatch Logs (identifiers only, no content or secrets).
+    console.log(JSON.stringify({ msg: "publication receipt", eventId: event.eventId, eventType: event.eventType, articleId, status }));
+    return { eventId: event.eventId, status };
   }
 
   return async function handler(snsEvent) {
