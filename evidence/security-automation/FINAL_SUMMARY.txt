@@ -1,0 +1,217 @@
+SupportHub Group 12 - Security and Automation Tasks - FINAL SUMMARY
+==================================================================
+Date (UTC): 2026-11-26
+Branch: integration/group12-final (HEAD 4a323de, unchanged)
+Updated after the resumed run. Tasks 5 and 6 were completed on 2026-11-26 between 04:41Z and
+05:10Z. T5.1 and T5.2 (04:29-04:34Z) were not repeated; the original 04:29Z BEFORE snapshot
+was reused as the baseline.
+
+------------------------------------------------------------------
+1. Task status
+------------------------------------------------------------------
+Task 1  Production Vercel services + Docker worker configuration ..... PARTIAL (manual Vercel check)
+Task 2  Final repository secret scan ................................. COMPLETED (manual GitHub action remains)
+Task 3  Bash script for production worker startup .................... COMPLETED
+Task 4  Floci and queue initialisation automation .................... COMPLETED (1 defect fixed, see Task 6)
+Task 5  Prevent duplicate containers and IAM credentials ............. COMPLETED  21 PASS / 0 FAIL
+Task 6  Safe startup and recovery verification ....................... COMPLETED  38 PASS / 1 FAIL (fixed and re-run: PASS)
+
+Assignment progress: 5 completed, 1 partial (it needs Vercel dashboard access), 0 blocked.
+
+------------------------------------------------------------------
+2. Test results and pass/fail counts
+------------------------------------------------------------------
+Task 1 - 24 PASS, 0 FAIL (read-only)
+  - Both production workers authenticate to Neon as their restricted, non-privileged roles
+    (supporthub_article_app, supporthub_editorial_app).
+  - The private env files match the container env exactly.
+  - The worker AWS keys belong to least-privilege production IAM users; 7/7 allow/deny checks
+    passed.
+  - A signed (HMAC) read from the editorial worker to the deployed Article service returned 200.
+  - All four Vercel /api/health endpoints return 200.
+  - The revoked credential appears in 0 configs, 0 containers and 0 working-tree files.
+  - PARTIAL because the database variables stored in the Vercel projects could not be read:
+    no Vercel access was available.
+
+Task 2 - scan completed
+  - 13/13 remote branches are clean of the revoked value.
+  - Default gitleaks rules on the remote branches: 0 findings.
+  - The 26 live secret values were found 0 times in the remote, the working tree, evidence/
+    or local objects.
+  - The revoked value remains in GitHub PR refs refs/pull/1-8 and in obsolete local refs
+    (local main, 9 other local branches, 4 tags, the stash, refs/remotes/bundle/final and
+    the reflog).
+
+Task 3 - start-production-workers.sh
+  - Production --verify-only: 29 PASS, 0 FAIL, 0 actions planned. It was run twice, the
+    second time as T6.7 after the floci-queues.sh fix.
+  - Isolated runs: start the stopped workers (T5.1), repeat (T5.2), recover a stopped worker
+    (T6.3) and recover from a Floci outage (T6.4). All passed with exit 0.
+
+Task 4 - floci-queues.sh
+  - Production --verify-only: 21/21, run twice.
+  - Isolated --verify-only: 21/21.
+  - Isolated normal (mutating) mode: 21/21 with 0 changes, run 4 times.
+  - Defect found by T6.2 and fixed: a paused Floci was misclassified as an environment
+    conflict (exit 3). It is now reported as "not ready" (exit 4), and the port is read from
+    HostConfig.PortBindings.
+
+Task 5 - 21 PASS, 0 FAIL (evidence file 05)
+  T5.1 normal startup: the 2 existing stopped workers were reused and started; 0 created .... 2 PASS
+  T5.2 repeated startup: both detected as already running; 0 changes ........................ 3 PASS
+  T5.3 floci-queues.sh, isolated, mutating mode, run twice: 0 changes each time ............. 2 PASS
+  T5.4 key files missing, no --allow-new-key: refused with "Not creating one automatically";
+       isolated access keys 4 -> 4; no file written ....................................... 3 PASS
+  T5.5 a dummy duplicate consumer on the same queue and network: exit 3 "refusing to start a
+       duplicate"; the real worker was untouched; the test container was removed ......... 3 PASS
+  T5.6 configuration drift (SQS_VISIBILITY_TIMEOUT), production --dry-run: exit 3, only the
+       variable name reported; no false positive; production worker unchanged ............ 3 PASS
+  Final: every container, queue, IAM user, access key and secret count equals the BEFORE
+       snapshot; each worker has exactly 1 container and 1 running instance ............... 5 PASS
+  Counts before -> after: containers 24 -> 24, isolated containers 10 -> 10, isolated queues
+  3 -> 3, isolated IAM users 4 -> 4, isolated access keys 4 -> 4, isolated secrets 7 -> 7;
+  production IAM users 6 -> 6, production access keys 5 -> 5.
+
+Task 6 - 38 PASS, 1 FAIL (evidence file 06)
+  Normal and repeated startup: covered by T5.1 and T5.2 (file 05).
+  T6.2  Floci paused (not answering), FLOCI_WAIT_SECONDS=10:
+        - First run: FAIL. Exit 3 ("publishes port 'none' ... refusing to mix environments")
+          instead of exit 4. The refusal was safe and the workers were untouched (2 PASS).
+        - After the fix: exit 4 "paused - Floci not ready ... not starting workers", workers
+          untouched (2 PASS).
+        - Regression: healthy isolated Floci, 21/21 (1 PASS).
+  T6.3  Isolated editorial worker stopped -> the script restarted the existing container;
+        the healthy article worker was left running; 1 instance ........................... 3 PASS
+  T6.4  Isolated Floci stopped while the workers ran (2 polling errors observed):
+        - the script started Floci, waited for health and verified queues and IAM (exit 0);
+        - the consumer recovered within its own process, without a worker restart;
+        - the queue, users and keys persisted ............................................. 5 PASS
+  T6.5  Queue processing resumed: one pending outbox row (isolated DB) replaying an
+        already-processed event was published in about 6 s, then acknowledged as
+        "duplicate". The queue drained to 0/0, the DLQ stayed at 8 -> 8, and the inbox still
+        holds 1 row for the event (idempotent) ............................................... 4 PASS
+  T6.6  Missing or invalid configuration rejected before any change ...................... 11 PASS
+        - empty config directory -> exit 2
+        - ARTICLE_SERVICE_URL removed -> exit 2
+        - empty AWS secret key -> exit 2
+        - owner database role -> exit 2
+        - sslmode=disable -> exit 2
+        - dev queue URL -> exit 3
+        - endpoint pointed at the isolated Floci (environment mixing) -> exit 3
+        - unknown environment name -> exit 2
+        - floci-queues.sh without --env -> exit 2
+        - all temporary copies deleted; production workers untouched
+  T6.7  Production startup configuration, --verify-only (non-disruptive): 29/29, 0 actions .. 1 PASS
+  T6.8  Separation: the production snapshot (StartedAt, restarts, queue attributes, IAM user
+        and key counts) is identical; no isolated container is on floci_default and no
+        production container is on supporthub-iso-net ...................................... 7 PASS
+  T6.9  Data preserved after the Floci stop/start, the pause and the worker stop: articles
+        229, users 7, inbox 136, search logs 436, DynamoDB items 33, S3 exports 8, queues,
+        IAM and secrets unchanged. The outbox went 136 -> 137, the extra row being the T6.5
+        test row (status published) .......................................................... 2 PASS
+  Automated recovery needed no manually typed AWS command: every AWS call came from the scripts.
+  Production restart recovery was NOT tested, by restriction. Production was verified only
+  with non-disruptive checks.
+
+------------------------------------------------------------------
+3. Files created / modified (all uncommitted)
+------------------------------------------------------------------
+Created:
+  infra/floci/floci-queues.sh                (paused-Floci / port-binding fix applied during Task 6)
+  infra/floci/start-production-workers.sh
+  infra/iam/production-article-sqs-publish-policy.json
+  infra/iam/production-editorial-sqs-consumer-policy.json
+  evidence/security-automation/01-production-configuration-verification.txt
+  evidence/security-automation/02-final-repository-secret-scan.txt
+  evidence/security-automation/03-production-startup-script.txt
+  evidence/security-automation/04-floci-queue-automation.txt   (fix note appended)
+  evidence/security-automation/05-idempotency-verification.txt (resumed section appended)
+  evidence/security-automation/06-startup-recovery-tests.txt   (resumed section appended)
+  evidence/security-automation/FINAL_SUMMARY.txt
+Modified:
+  infra/floci/README.md (+38 lines: section "Production workers and queues (automated startup)")
+Also untracked from the earlier assignment: evidence/search-aws/ (7 files).
+Secret check on the changed files: 0 of 31 live secret values found; gitleaks exit 0 on the
+evidence folder and on floci-queues.sh. All temporary config copies were deleted.
+
+------------------------------------------------------------------
+4. Evidence paths
+------------------------------------------------------------------
+evidence/security-automation/01-production-configuration-verification.txt
+evidence/security-automation/02-final-repository-secret-scan.txt
+evidence/security-automation/03-production-startup-script.txt
+evidence/security-automation/04-floci-queue-automation.txt
+evidence/security-automation/05-idempotency-verification.txt
+evidence/security-automation/06-startup-recovery-tests.txt
+evidence/security-automation/FINAL_SUMMARY.txt
+(Files 05 and 06 still contain the earlier "RUN STOPPED" notes; the RESUMED sections that
+follow them supersede those notes.)
+
+------------------------------------------------------------------
+5. How to run the automation (repository root, Git Bash)
+------------------------------------------------------------------
+  bash infra/floci/start-production-workers.sh                 # start or reuse Floci, queue + DLQ, both workers
+  bash infra/floci/start-production-workers.sh --dry-run       # show the plan, change nothing
+  bash infra/floci/start-production-workers.sh --verify-only   # non-disruptive; exit 1 if any action is needed
+  bash infra/floci/start-production-workers.sh --env isolated  # same logic on the isolated stack
+  bash infra/floci/floci-queues.sh --env production|isolated [--verify-only] [--counts]
+Private config: %LOCALAPPDATA%\SupportHub\production-workers\ (override with SUPPORTHUB_WORKER_CONFIG_DIR)
+Exit codes: 0 ok | 1 check failed | 2 missing prerequisite or config | 3 conflicting config
+            | 4 Floci not ready (stopped, paused or unhealthy) | 5 worker failed to start
+Documented in infra/floci/README.md.
+
+------------------------------------------------------------------
+6. Remaining manual actions / blockers
+------------------------------------------------------------------
+1. Vercel (Alyaa, dashboard, no redeploy needed): confirm the Production database variable
+   of each project uses its restricted role: supporthub_article_app, supporthub_identity_app,
+   supporthub_editorial_app and supporthub_search_app. Confirm no variable contains
+   neondb_owner, and that the latest deployment was made after the rotation.
+   This is the only reason Task 1 is partial.
+2. GitHub Support: ask for refs/pull/1-8 and cached views/unreferenced objects to be purged.
+   They still contain the revoked owner password, which is already rotated.
+3. Never push or merge the obsolete local refs listed under Task 2. Pushing local main, or
+   running "git push --all" or "git push --tags", would republish the revoked credential.
+4. Optional: move the development containers off the development owner role; consider a
+   14-day DLQ retention.
+Isolated workers supporthub-iso-article-outbox-worker and supporthub-iso-editorial-article-worker
+are still running (started by T5.1; they were stopped before Task 5). Stop them with
+"docker stop <name>" if the RAM is needed. Isolated Floci and Postgres are running, as before.
+
+------------------------------------------------------------------
+7. Final Git status
+------------------------------------------------------------------
+   M infra/floci/README.md
+  ?? evidence/search-aws/
+  ?? evidence/security-automation/
+  ?? infra/floci/floci-queues.sh
+  ?? infra/floci/start-production-workers.sh
+  ?? infra/iam/production-article-sqs-publish-policy.json
+  ?? infra/iam/production-editorial-sqs-consumer-policy.json
+Branch integration/group12-final, HEAD 4a323de; the stash count is still 1 (the pre-existing
+entry).
+
+------------------------------------------------------------------
+8. Confirmations
+------------------------------------------------------------------
+- No commits, pushes, merges, pull requests, branch switches or history rewrites.
+- No GitHub, Cloudflare or Vercel settings changed; no redeploys.
+- No credentials rotated, deleted, exposed or created. IAM access key counts are unchanged:
+  production 5, isolated 4.
+- Production or development Neon data was not modified, and no production article was
+  touched. The only data write was 1 test outbox row in the ISOLATED PostgreSQL (T6.5).
+- Main Floci on :4566 was only read or verified. No message was sent to the production queue.
+- No existing container, volume or backup was deleted. The only container removed was the
+  T5.5 dummy test container, which this test created.
+- The repository secret scan was not repeated.
+
+------------------------------------------------------------------
+9. Production services preserved (read-only check at the end, ~05:12Z)
+------------------------------------------------------------------
+  supporthub-floci                          running, started 03:36:00Z, restarts=0, unless-stopped
+  supporthub-prod-article-outbox-worker     running, started 03:35:10Z, restarts=0, unless-stopped, 0 error lines (last 1 h)
+  supporthub-prod-editorial-article-worker  running, started 03:35:10Z, restarts=0, unless-stopped, 0 error lines (last 1 h)
+  production queue attributes unchanged (VisibilityTimeout 60, redrive to DLQ maxReceiveCount 5)
+  Vercel /api/health: article 200, identity 200, editorial 200, search 200
+  Start times and restart counts match the 04:29Z pre-test snapshot, so production was never
+  restarted during any test.

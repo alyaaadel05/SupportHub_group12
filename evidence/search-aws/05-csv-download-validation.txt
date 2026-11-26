@@ -1,0 +1,83 @@
+=== Task 5: CSV download through the application + validation ===
+Run (UTC): 2026-11-26T03:54:24.056Z  run-id 20261126T035327Z
+Targets: Identity http://127.0.0.1:3206, Search http://127.0.0.1:3208, Floci http://localhost:4567 (isolated), Postgres supporthub-iso-postgres
+Secrets/cookies/CSRF tokens/AWS keys redacted. Demo emails masked.
+
+PASS | Editor GET /api/analytics/exports lists the new export first | HTTP 200 first=analytics-20261126T035350Z.csv count=6
+GET /api/analytics/exports/analytics-20261126T035350Z.csv (editor) -> HTTP 200
+  Content-Type: text/csv; charset=utf-8
+  Content-Disposition: attachment; filename="analytics-20261126T035350Z.csv"
+  Cache-Control: no-store, private
+PASS | Download -> 200
+PASS | Content-Type text/csv
+PASS | Content-Disposition attachment with export filename
+PASS | Cache-Control no-store (never cached)
+PASS | Downloaded body byte-identical to S3 object | 1914 bytes
+ --- Downloaded CSV (aggregate data only: no user IDs, emails or sessions) ---
+  "section","name","value","extra1","extra2"
+  "report","generated_at","2026-11-26T03:53:50.574Z","",""
+  "summary","total_searches","436","",""
+  "summary","successful_searches","290","",""
+  "summary","zero_result_searches","146","",""
+  "summary","search_success_rate_percent","66.51","",""
+  "summary","zero_result_rate_percent","33.49","",""
+  "summary","click_through_rate_percent","11.7","",""
+  "summary","total_article_views","54","",""
+  "summary","total_votes","12","",""
+  "summary","helpfulness_rate_percent","66.67","",""
+  "popular_term","password","136","",""
+  "popular_term","guide","49","",""
+  "popular_term","help","49","",""
+  "popular_term","support","49","",""
+  "popular_term","account","49","",""
+  "popular_term","printer","12","",""
+  "popular_term","billing","12","",""
+  "popular_term","email","12","",""
+  "popular_term","router","12","",""
+  "popular_term","two-factor","10","",""
+  "zero_result_term","help","49","",""
+  "zero_result_term","guide","44","",""
+  "zero_result_term","nonexistent-topic-xyz","10","",""
+  "zero_result_term","printer","6","",""
+  "zero_result_term","email","6","",""
+  "zero_result_term","router","6","",""
+  "zero_result_term","billing","6","",""
+  "zero_result_term","recover","5","",""
+  "zero_result_term","install","5","",""
+  "zero_result_term","two-factor","5","",""
+  "article","Reset your password lifecycle20261125t185609z","7","1","0"
+  "article","Update billing card - k6 guide 2 4","6","1","0"
+  "article","Email not syncing on mobile - k6 guide 14 3","6","1","0"
+  "article","Reset your password - k6 guide 40 12","6","1","0"
+  "article","Printer is offline - k6 guide 39 4","6","0","1"
+  "article","Router keeps disconnecting - k6 guide 51 5","6","1","0"
+  "article","Configure two-factor login - k6 guide 41 5","5","1","0"
+  "article","Recover a deleted file - k6 guide 53 12","5","1","0"
+  "article","Install the desktop app - k6 guide 36 13","5","1","0"
+  "article","Reset your password - k6 guide 48 11","2","0","0"
+ --- Validation ---
+PASS | Header = section,name,value,extra1,extra2
+PASS | Every record has exactly 5 quoted fields | records=40
+PASS | Record count equals API-reported rows | 40 vs 40
+PASS | generated_at is a valid ISO timestamp within 5 min
+PASS | summary total_searches equals PostgreSQL count | csv=436 db=436
+PASS | summary successful_searches equals PostgreSQL count | csv=290 db=290
+PASS | summary zero_result_searches equals PostgreSQL count | csv=146 db=146
+PASS | summary total_article_views equals PostgreSQL count | csv=54 db=54
+PASS | summary total_votes equals PostgreSQL count | csv=12 db=12
+PASS | search_success_rate_percent consistent with counts (+-0.1) | 66.51%
+PASS | popular_term rows match PostgreSQL top-10 term counts | 10 terms
+PASS | popular_term 'password' reflects this run's searches | ["password",136]
+PASS | article rows have integer views/helpful/unhelpful | 10 article rows
+PASS | summary values equal /api/analytics/overview taken before export | overview=436/54
+PASS | CSV formula injection neutralised (no cell starts with = + - @)
+PASS | No personal data in CSV (no emails / user ids / session ids)
+ --- Unauthorized access to protected exports ---
+PASS | Anonymous download -> 401 | HTTP 401 {"error":"Login required"}
+PASS | Anonymous list -> 401 | HTTP 401
+PASS | Author (logged in, non-editor) download -> 403 | HTTP 403 {"error":"Reviewer or admin required"}
+PASS | Author list -> 403 | HTTP 403
+PASS | Forged session cookie -> 401 | HTTP 401
+PASS | Editor path traversal name -> rejected (400/404, no file) | HTTP 400 {"error":"Invalid export name"}
+PASS | Editor non-export object name in bucket -> 400 (name pattern) | HTTP 400 {"error":"Invalid export name"}
+PASS | Editor nonexistent export -> 404 | HTTP 404 {"error":"Export not found"}

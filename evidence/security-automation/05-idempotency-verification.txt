@@ -1,0 +1,273 @@
+=== Task 5: Idempotency - no duplicate containers, queues, IAM users or keys ===
+Run (UTC): 2026-11-26T04:29:22Z
+Disruptive actions ONLY on the isolated stack (Floci :4567, supporthub-iso-*).
+Production (:4566, supporthub-prod-*) only via --dry-run / --verify-only (read-only).
+Scripts under test: infra/floci/floci-queues.sh, infra/floci/start-production-workers.sh
+Output below is filtered to PASS/FAIL/CHANGE/PLAN/ERROR/summary lines. No values are printed by the scripts.
+
+--- Initial state ---
+iso workers: article=exited editorial=exited; iso floci=running postgres=running
+  BEFORE containers_total=24
+  BEFORE containers_iso=10
+  BEFORE count[supporthub-iso-floci]=1
+  BEFORE count[supporthub-iso-postgres]=1
+  BEFORE count[supporthub-iso-article-outbox-worker]=1
+  BEFORE count[supporthub-iso-editorial-article-worker]=1
+  BEFORE count[supporthub-floci]=1
+  BEFORE count[supporthub-prod-article-outbox-worker]=1
+  BEFORE count[supporthub-prod-editorial-article-worker]=1
+  BEFORE iso_queues=3
+  BEFORE iso_queue_names=supporthub-article-events,supporthub-article-events-demo,supporthub-article-events-dlq,
+  BEFORE iso_iam_users=4
+  BEFORE iso_access_keys_total=4
+  BEFORE iso_secrets=7
+  BEFORE iso_db_articles=229
+  BEFORE iso_db_users=7
+  BEFORE iso_db_outbox=136
+  BEFORE iso_db_inbox=136
+  BEFORE iso_db_search_logs=436
+  BEFORE iso_ddb_items=33
+  BEFORE iso_s3_exports=8
+  PROD-BEFORE prod_queues=4
+  PROD-BEFORE prod_iam_users=6
+  PROD-BEFORE prod_access_keys_total=5
+  PROD-BEFORE prod_queue_attrs=60 {"deadLetterTargetArn":"arn:aws:sqs:us-east-1:000000000000:supporthub-article-events-production-dlq","maxReceiveCount":"5"}
+  PROD-BEFORE prod[supporthub-floci]=running started=2026-11-26T03:36:00.103492492Z restarts=0 policy=unless-stopped
+  PROD-BEFORE prod[supporthub-prod-article-outbox-worker]=running started=2026-11-26T03:35:10.403863535Z restarts=0 policy=unless-stopped
+  PROD-BEFORE prod[supporthub-prod-editorial-article-worker]=running started=2026-11-26T03:35:10.41324482Z restarts=0 policy=unless-stopped
+
+--- T5.1 Run 1: start-production-workers.sh --env isolated (normal startup; workers were stopped) ---
+$ bash infra/floci/start-production-workers.sh --env isolated
+      [PASS] docker, aws, curl, node available; Docker running
+      [PASS] article: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_URL SQS_QUEUE_URL)
+      [PASS] editorial: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_URL ARTICLE_EVENTS_QUEUE_URL)
+        floci-queues (isolated): 21 passed, 0 failed, 0 change(s)
+      [PASS] Floci healthy; supporthub-article-events + DLQ + redrive + IAM keys verified (floci-queues.sh exit 0)
+      [PASS] network supporthub-iso-net exists
+      [PASS] supporthub-iso-floci reachable as 'floci' on supporthub-iso-net
+      [PASS] supporthub-iso-postgres healthy
+      [PASS] supporthub-iso-article-outbox-worker exists with expected image/command/network/restart policy/env (reused)
+      [PASS] started existing supporthub-iso-article-outbox-worker
+      [PASS] supporthub-iso-editorial-article-worker exists with expected image/command/network/restart policy/env (reused)
+      [PASS] started existing supporthub-iso-editorial-article-worker
+      [PASS] supporthub-iso-article-outbox-worker running restarts=0 restart-policy=unless-stopped
+      [PASS] supporthub-iso-article-outbox-worker startup log: 'Article SQS outbox scheduler started'
+      [PASS] supporthub-iso-article-outbox-worker: no connection/auth errors since Floci was confirmed ready
+      [PASS] supporthub-iso-article-outbox-worker: single instance (running count 1)
+      [PASS] supporthub-iso-editorial-article-worker running restarts=0 restart-policy=unless-stopped
+      [PASS] supporthub-iso-editorial-article-worker startup log: 'Editorial Article Event Consumer started'
+      [PASS] supporthub-iso-editorial-article-worker: no connection/auth errors since Floci was confirmed ready
+      [PASS] supporthub-iso-editorial-article-worker: single instance (running count 1)
+     Worker startup (isolated): 19 passed, 0 failed
+    -> exit 0 (132s) [run1]
+PASS | run 1 exit 0
+PASS | run 1 reused + started the 2 existing stopped workers (no new containers)
+
+--- T5.2 Run 2: same command again (repeated startup) ---
+$ bash infra/floci/start-production-workers.sh --env isolated
+      [PASS] docker, aws, curl, node available; Docker running
+      [PASS] article: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_URL SQS_QUEUE_URL)
+      [PASS] editorial: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_URL ARTICLE_EVENTS_QUEUE_URL)
+        floci-queues (isolated): 21 passed, 0 failed, 0 change(s)
+      [PASS] Floci healthy; supporthub-article-events + DLQ + redrive + IAM keys verified (floci-queues.sh exit 0)
+      [PASS] network supporthub-iso-net exists
+      [PASS] supporthub-iso-floci reachable as 'floci' on supporthub-iso-net
+      [PASS] supporthub-iso-postgres healthy
+      [PASS] supporthub-iso-article-outbox-worker exists with expected image/command/network/restart policy/env (reused)
+      [PASS] supporthub-iso-article-outbox-worker already running (no duplicate started)
+      [PASS] supporthub-iso-editorial-article-worker exists with expected image/command/network/restart policy/env (reused)
+      [PASS] supporthub-iso-editorial-article-worker already running (no duplicate started)
+      [PASS] supporthub-iso-article-outbox-worker running restarts=0 restart-policy=unless-stopped
+      [PASS] supporthub-iso-article-outbox-worker startup log: 'Article SQS outbox scheduler started'
+      [PASS] supporthub-iso-article-outbox-worker: no connection/auth errors since Floci was confirmed ready
+      [PASS] supporthub-iso-article-outbox-worker: single instance (running count 1)
+      [PASS] supporthub-iso-editorial-article-worker running restarts=0 restart-policy=unless-stopped
+      [PASS] supporthub-iso-editorial-article-worker startup log: 'Editorial Article Event Consumer started'
+      [PASS] supporthub-iso-editorial-article-worker: no connection/auth errors since Floci was confirmed ready
+      [PASS] supporthub-iso-editorial-article-worker: single instance (running count 1)
+     Worker startup (isolated): 19 passed, 0 failed
+    -> exit 0 (126s) [run2]
+PASS | run 2 exit 0
+PASS | run 2: both workers 'already running (no duplicate started)'
+PASS | run 2: 0 changes, 0 containers created
+
+--- T5.3 floci-queues.sh --env isolated in normal (mutating) mode, twice ---
+$ bash infra/floci/floci-queues.sh --env isolated
+
+--- RUN STOPPED BY USER REQUEST at 2026-11-26T04:37:28Z ---
+The harness was stopped during T5.3 (first floci-queues.sh --env isolated run in mutating mode,
+no result recorded). Tests NOT executed: T5.3 (2 runs), T5.4 (no new key without key files),
+T5.5 (duplicate consumer refusal), T5.6 (config drift refusal), final before/after diff.
+Post-stop read-only check (no test): isolated queues=3, IAM users=4, access keys=4,
+containers_total=24, supporthub-iso-* containers=10 - identical to BEFORE, so the two
+completed startup runs and the interrupted run created no duplicate container, queue, IAM
+user or access key. Isolated workers left running (started by T5.1; were stopped before).
+Task 5 result so far: 5 PASS, 0 FAIL (T5.1 2, T5.2 3); remaining tests not run -> PARTIAL.
+
+=== RESUMED 2026-11-26T04:41:04Z - remaining tests, baseline = BEFORE snapshot above (T5.1/T5.2 not repeated) ===
+
+--- T5.3 floci-queues.sh --env isolated in normal (mutating) mode, twice ---
+$ bash infra/floci/floci-queues.sh --env isolated
+      [PASS] container supporthub-iso-floci exists (count=1, reused)
+      [PASS] supporthub-iso-floci running
+      [PASS] supporthub-iso-floci publishes 4566 on host port 4567 only (environment separation)
+      [PASS] restart policy unless-stopped
+      [PASS] IAM enforcement enabled
+      [PASS] attached to network supporthub-iso-net
+      [PASS] Floci healthy, SQS running (after ~1s)
+      [PASS] AWS CLI connectivity
+      [PASS] no duplicate supporthub-article-events queues (found 1)
+      [PASS] DLQ supporthub-article-events-dlq exists (reused)
+      [PASS] queue supporthub-article-events exists (reused, not recreated)
+      [PASS] VisibilityTimeout=30 (expected 30)
+      [PASS] redrive target=arn:aws:sqs:us-east-1:000000000000:supporthub-article-events-dlq
+      [PASS] maxReceiveCount=5 (expected 5)
+      [PASS] IAM user supporthub-article-service exists (reused)
+      [PASS] supporthub-article-service policy SupportHubArticleSQSPublisher matches infra/iam/article-sqs-policy.json
+      [PASS] supporthub-article-service key file article.aws.env valid (key#6096508787, 1 key(s) total) - reused, no new key
+      [PASS] IAM user supporthub-editorial-service exists (reused)
+      [PASS] supporthub-editorial-service policy SupportHubEditorialSQSConsumer matches infra/iam/editorial-sqs-consumer-policy.json
+      [PASS] supporthub-editorial-service key file editorial.aws.env valid (key#b15538ae89, 1 key(s) total) - reused, no new key
+      [PASS] editorial consumer key can reach supporthub-article-events
+    floci-queues (isolated): 21 passed, 0 failed, 0 change(s)
+    COUNTS env=isolated floci_containers=1 article_events_queues=3 queue_iam_users=2/2 queue_iam_access_keys=2 all_iam_users=4
+    -> exit 0 (86s) [queues-run1]
+PASS | T5.3 floci-queues run 1: exit 0, 0 change(s) - Floci/queues/DLQ/redrive/users/policies/keys reused
+$ bash infra/floci/floci-queues.sh --env isolated
+      [PASS] container supporthub-iso-floci exists (count=1, reused)
+      [PASS] supporthub-iso-floci running
+      [PASS] supporthub-iso-floci publishes 4566 on host port 4567 only (environment separation)
+      [PASS] restart policy unless-stopped
+      [PASS] IAM enforcement enabled
+      [PASS] attached to network supporthub-iso-net
+      [PASS] Floci healthy, SQS running (after ~1s)
+      [PASS] AWS CLI connectivity
+      [PASS] no duplicate supporthub-article-events queues (found 1)
+      [PASS] DLQ supporthub-article-events-dlq exists (reused)
+      [PASS] queue supporthub-article-events exists (reused, not recreated)
+      [PASS] VisibilityTimeout=30 (expected 30)
+      [PASS] redrive target=arn:aws:sqs:us-east-1:000000000000:supporthub-article-events-dlq
+      [PASS] maxReceiveCount=5 (expected 5)
+      [PASS] IAM user supporthub-article-service exists (reused)
+      [PASS] supporthub-article-service policy SupportHubArticleSQSPublisher matches infra/iam/article-sqs-policy.json
+      [PASS] supporthub-article-service key file article.aws.env valid (key#6096508787, 1 key(s) total) - reused, no new key
+      [PASS] IAM user supporthub-editorial-service exists (reused)
+      [PASS] supporthub-editorial-service policy SupportHubEditorialSQSConsumer matches infra/iam/editorial-sqs-consumer-policy.json
+      [PASS] supporthub-editorial-service key file editorial.aws.env valid (key#b15538ae89, 1 key(s) total) - reused, no new key
+      [PASS] editorial consumer key can reach supporthub-article-events
+    floci-queues (isolated): 21 passed, 0 failed, 0 change(s)
+    COUNTS env=isolated floci_containers=1 article_events_queues=3 queue_iam_users=2/2 queue_iam_access_keys=2 all_iam_users=4
+    -> exit 0 (87s) [queues-run2]
+PASS | T5.3 floci-queues run 2: exit 0, 0 change(s) - Floci/queues/DLQ/redrive/users/policies/keys reused
+
+--- T5.4 No new credentials on startup: key directory without key files, no --allow-new-key ---
+$ env SUPPORTHUB_KEY_DIR_OVERRIDE=C:/Users/OMEN/AppData/Local/Temp/claude/a6414b569313e83b/90df504d-cd78-4d4c-9151-691158a65cb9/scratchpad/empty-keys bash infra/floci/floci-queues.sh --env isolated
+      [PASS] container supporthub-iso-floci exists (count=1, reused)
+      [PASS] supporthub-iso-floci running
+      [PASS] supporthub-iso-floci publishes 4566 on host port 4567 only (environment separation)
+      [PASS] restart policy unless-stopped
+      [PASS] IAM enforcement enabled
+      [PASS] attached to network supporthub-iso-net
+      [PASS] Floci healthy, SQS running (after ~1s)
+      [PASS] AWS CLI connectivity
+      [PASS] no duplicate supporthub-article-events queues (found 1)
+      [PASS] DLQ supporthub-article-events-dlq exists (reused)
+      [PASS] queue supporthub-article-events exists (reused, not recreated)
+      [PASS] VisibilityTimeout=30 (expected 30)
+      [PASS] redrive target=arn:aws:sqs:us-east-1:000000000000:supporthub-article-events-dlq
+      [PASS] maxReceiveCount=5 (expected 5)
+      [PASS] IAM user supporthub-article-service exists (reused)
+      [PASS] supporthub-article-service policy SupportHubArticleSQSPublisher matches infra/iam/article-sqs-policy.json
+      [FAIL] supporthub-article-service has no valid key in C:/Users/OMEN/AppData/Local/Temp/claude/a6414b569313e83b/90df504d-cd78-4d4c-9151-691158a65cb9/scratchpad/empty-keys/article.aws.env (1 key(s) exist). Not creating one automatically; rerun with --allow-new-key after review
+      [PASS] IAM user supporthub-editorial-service exists (reused)
+      [PASS] supporthub-editorial-service policy SupportHubEditorialSQSConsumer matches infra/iam/editorial-sqs-consumer-policy.json
+      [FAIL] supporthub-editorial-service has no valid key in C:/Users/OMEN/AppData/Local/Temp/claude/a6414b569313e83b/90df504d-cd78-4d4c-9151-691158a65cb9/scratchpad/empty-keys/editorial.aws.env (1 key(s) exist). Not creating one automatically; rerun with --allow-new-key after review
+    floci-queues (isolated): 18 passed, 2 failed, 0 change(s)
+    COUNTS env=isolated floci_containers=1 article_events_queues=3 queue_iam_users=2/2 queue_iam_access_keys=2 all_iam_users=4
+    -> exit 1 (74s) [no-key-files]
+PASS | T5.4 both users without key file -> FAIL 'Not creating one automatically', exit 1
+PASS | T5.4 isolated access keys unchanged (4 -> 4); no file written to the key dir (0 files)
+PASS | T5.4 0 changes (queues/users/policies untouched)
+
+--- T5.5 Duplicate worker instance detection (dummy container on the same isolated queue/network) ---
+created test container supporthub-iso-duplicate-consumer-test (idle node process with the same queue URL + script name; does NOT consume)
+$ bash infra/floci/start-production-workers.sh --env isolated
+      [PASS] docker, aws, curl, node available; Docker running
+      [PASS] article: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_URL SQS_QUEUE_URL)
+      [PASS] editorial: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_URL ARTICLE_EVENTS_QUEUE_URL)
+        floci-queues (isolated): 21 passed, 0 failed, 0 change(s)
+      [PASS] Floci healthy; supporthub-article-events + DLQ + redrive + IAM keys verified (floci-queues.sh exit 0)
+      [PASS] network supporthub-iso-net exists
+      [PASS] supporthub-iso-floci reachable as 'floci' on supporthub-iso-net
+      [PASS] supporthub-iso-postgres healthy
+      [PASS] supporthub-iso-article-outbox-worker exists with expected image/command/network/restart policy/env (reused)
+      [PASS] supporthub-iso-article-outbox-worker already running (no duplicate started)
+    ERROR: another running container already runs workers/articleEventConsumer.js on supporthub-article-events: supporthub-iso-duplicate-consumer-test - refusing to start a duplicate
+    -> exit 3 (102s) [duplicate]
+PASS | T5.5 duplicate consumer detected -> exit 3 'refusing to start a duplicate'
+PASS | T5.5 real editorial worker untouched (same StartedAt, 1 instance)
+removed the test container created by this test (only that one)
+PASS | T5.5 test container cleaned up
+
+--- T5.6 Configuration drift of an existing worker (production profile, --dry-run = read-only) ---
+private 0700 copy of the production config with SQS_VISIBILITY_TIMEOUT changed 60 -> 45 (value is not secret)
+$ env SUPPORTHUB_WORKER_CONFIG_DIR=C:/Users/OMEN/AppData/Local/Temp/claude/a6414b569313e83b/90df504d-cd78-4d4c-9151-691158a65cb9/scratchpad/cfg-mismatch bash infra/floci/start-production-workers.sh --env production --dry-run
+      [PASS] docker, aws, curl, node available; Docker running
+      [PASS] article.restricted.env present outside the repository
+      [PASS] article: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION AWS_ENDPOINT_URL SQS_QUEUE_URL DATABASE_URL_POOLED NODE_ENV)
+      [PASS] article: queue URL = production queue
+      [PASS] article: database identity role=supporthub_article_app (restricted, TLS verify-full)
+      [PASS] article: NODE_ENV=production
+      [PASS] editorial.restricted.env present outside the repository
+      [PASS] editorial: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION SERVICE_SHARED_SECRET ARTICLE_SERVICE_URL SQS_ENDPOINT_URL ARTICLE_EVENTS_QUEUE_URL DATABASE_URL_POOLED NODE_ENV)
+      [PASS] editorial: queue URL = production queue
+      [PASS] editorial: database identity role=supporthub_editorial_app (restricted, TLS verify-full)
+      [PASS] editorial: SERVICE_SHARED_SECRET length >= 32
+      [PASS] editorial: ARTICLE_SERVICE_URL uses HTTPS
+      [PASS] editorial: NODE_ENV=production
+        floci-queues (production): 21 passed, 0 failed, 0 change(s) [verify-only]
+      [PASS] Floci healthy; supporthub-article-events-production + DLQ + redrive + IAM keys verified (floci-queues.sh exit 0)
+      [PASS] network floci_default exists
+      [PASS] supporthub-floci reachable as 'floci' on floci_default
+      [PASS] Neon pooler reachable on TCP 5432 (host not printed)
+      [PASS] Article service health 200 (https://supporthub-article-service.vercel.app)
+      [PASS] supporthub-prod-article-outbox-worker exists with expected image/command/network/restart policy/env (reused)
+      [PASS] supporthub-prod-article-outbox-worker already running (no duplicate started)
+    ERROR: supporthub-prod-editorial-article-worker exists but its configuration differs from C:/Users/OMEN/AppData/Local/Temp/claude/a6414b569313e83b/90df504d-cd78-4d4c-9151-691158a65cb9/scratchpad/cfg-mismatch/editorial.restricted.env - not modified (remove/recreate only after review)
+    -> exit 3 (61s) [drift]
+        differences (names only): env:SQS_VISIBILITY_TIMEOUT
+    ERROR: supporthub-prod-editorial-article-worker exists but its configuration differs from C:/Users/OMEN/AppData/Local/Temp/claude/a6414b569313e83b/90df504d-cd78-4d4c-9151-691158a65cb9/scratchpad/cfg-mismatch/editorial.restricted.env - not modified (remove/recreate only after review)
+PASS | T5.6 drift detected on supporthub-prod-editorial-article-worker -> exit 3, only the variable NAME reported
+PASS | T5.6 unchanged article worker still recognised as matching (no false positive)
+PASS | T5.6 production worker not modified (StartedAt/RestartCount identical)
+temporary config copy deleted
+
+--- T5 final: resource counts BEFORE (04:29Z, prior to T5.1) vs AFTER all Task 5 tests ---
+  containers_total                                   before=24                           after=24
+  containers_iso                                     before=10                           after=10
+  count[supporthub-iso-floci]                        before=1                            after=1
+  count[supporthub-iso-postgres]                     before=1                            after=1
+  count[supporthub-iso-article-outbox-worker]        before=1                            after=1
+  count[supporthub-iso-editorial-article-worker]     before=1                            after=1
+  count[supporthub-floci]                            before=1                            after=1
+  count[supporthub-prod-article-outbox-worker]       before=1                            after=1
+  count[supporthub-prod-editorial-article-worker]    before=1                            after=1
+  iso_queues                                         before=3                            after=3
+  iso_queue_names                                    before=supporthub-article-events,supporthub-article-events-demo,supporthub-article-events-dlq, after=supporthub-article-events,supporthub-article-events-demo,supporthub-article-events-dlq,
+  iso_iam_users                                      before=4                            after=4
+  iso_access_keys_total                              before=4                            after=4
+  iso_secrets                                        before=7                            after=7
+  iso_db_articles                                    before=229                          after=229
+  iso_db_users                                       before=7                            after=7
+  iso_db_outbox                                      before=136                          after=136
+  iso_db_inbox                                       before=136                          after=136
+  iso_db_search_logs                                 before=436                          after=436
+  iso_ddb_items                                      before=33                           after=33
+  iso_s3_exports                                     before=8                            after=8
+PASS | T5 no container, queue, IAM user, access key or secret count changed across T5.1-T5.6
+PASS | T5 supporthub-iso-article-outbox-worker: exactly 1 container, 1 running
+PASS | T5 supporthub-iso-editorial-article-worker: exactly 1 container, 1 running
+PASS | T5 supporthub-prod-article-outbox-worker: exactly 1 container, 1 running
+PASS | T5 supporthub-prod-editorial-article-worker: exactly 1 container, 1 running
+
+Task 5 TOTAL (T5.1-T5.6 + final): 21 PASS, 0 FAIL -> COMPLETED

@@ -1,0 +1,49 @@
+=== Task 2: DynamoDB live counter test ===
+Run (UTC): 2026-11-26T03:53:27.590Z  run-id 20261126T035327Z
+Targets: Identity http://127.0.0.1:3206, Search http://127.0.0.1:3208, Floci http://localhost:4567 (isolated), Postgres supporthub-iso-postgres
+Secrets/cookies/CSRF tokens/AWS keys redacted. Demo emails masked.
+
+--- Pre-start isolation checks (performed before docker start; repeated here) ---
+supporthub/shared/database DATABASE_URL host: postgres:5432/supporthub (neon in URL: false)
+'postgres' alias resolves to: supporthub-iso-postgres on supporthub-iso-net aliases=[supporthub-iso-postgres postgres]
+supporthub-iso-search networks: supporthub-iso-net (no DATABASE_URL in container env; loaded only from isolated Secrets Manager)
+Running containers started for this test: supporthub-iso-identity (editor login), supporthub-iso-search. Article/editorial/frontend/load-test containers left stopped.
+PASS | Search /api/health database connected | HTTP 200 {"status":"ok","service":"search-analytics-service","database":"connected"}
+PASS | Search loaded DATABASE_URL from isolated Secrets Manager
+ --- Baseline (DynamoDB Scan with search-analytics-service key) ---
+TERM#password: {"searches":133,"zeroResults":0,"updatedAt":"2026-11-25T19:34:25.771Z"}
+TERM#searchaws20261126t035327z: "(absent)"
+search_query_logs rows: 431
+ --- Genuine Search API activity ---
+GET /api/public/articles?q=password -> HTTP 200, results=10
+GET /api/public/articles?q=password -> HTTP 200, results=10
+GET /api/public/articles?q=password -> HTTP 200, results=10
+GET /api/public/articles?q=searchaws20261126t035327z -> HTTP 200, results=0
+GET /api/public/articles?q=searchaws20261126t035327z -> HTTP 200, results=0
+GET /api/public/articles/226 -> HTTP 200, title=""
+GET /api/public/articles/226 -> HTTP 200, title=""
+Waiting 8 s for the counter batch flush (COUNTERS_FLUSH_MS default 5000) ...
+ --- After (DynamoDB Scan) ---
+TERM#password: {"searches":136,"zeroResults":0,"updatedAt":"2026-11-26T03:53:39.598Z"}
+TERM#searchaws20261126t035327z: {"searches":2,"zeroResults":2,"updatedAt":"2026-11-26T03:53:39.621Z"}
+ARTICLE#226: {"views":2,"updatedAt":"2026-11-26T03:53:39.634Z"}
+search_query_logs rows: 436 (delta 5)
+PASS | TERM#password searches incremented by exactly 3 | 133 -> 136
+PASS | TERM#password zeroResults unchanged (term has results) | 0 -> 0
+PASS | TERM#searchaws20261126t035327z created with searches=2, zeroResults=2 | {"searches":2,"zeroResults":2,"updatedAt":"2026-11-26T03:53:39.621Z"}
+PASS | ARTICLE#226 views incremented by exactly 2 | 0 -> 2
+PASS | updatedAt refreshed on updated items | 2026-11-26T03:53:39.598Z
+PASS | PostgreSQL source of truth logged the same 5 searches
+ --- Live counters API (GET /api/analytics/live-counters) ---
+PASS | Anonymous -> 401 | HTTP 401 {"error":"Login required"}
+Author login (role=author) -> HTTP 200
+PASS | Author (non-editor) -> 403 | HTTP 403 {"error":"Reviewer or admin required"}
+PASS | Editor login via Identity Service | HTTP 200 role=editor
+PASS | Editor -> 200, available=true | HTTP 200
+PASS | Response Cache-Control no-store | no-store, private
+API terms:    [{"term":"password","searches":136,"zeroResults":0},{"term":"account","searches":49,"zeroResults":0},{"term":"guide","searches":49,"zeroResults":44},{"term":"help","searches":49,"zeroResults":49},{"term":"support","searches":49,"zeroResults":0},{"term":"billing","searches":12,"zeroResults":6},{"term":"email","searches":12,"zeroResults":6},{"term":"printer","searches":12,"zeroResults":6},{"term":"router","searches":12,"zeroResults":6},{"term":"install","searches":10,"zeroResults":5}]
+API articles: [{"articleId":"1","views":7},{"articleId":"127","views":6},{"articleId":"137","views":6},{"articleId":"161","views":6},{"articleId":"163","views":6},{"articleId":"174","views":6},{"articleId":"159","views":5},{"articleId":"164","views":5},{"articleId":"176","views":5},{"articleId":"226","views":2}]
+PASS | Every API term value equals the stored DynamoDB value | 10 terms, mismatches=0
+PASS | Every API article value equals the stored DynamoDB value | 10 articles, mismatches=0
+PASS | API shows password=136 (the value just written) | {"term":"password","searches":136,"zeroResults":0}
+PASS | API top-10 term counts equal top-10 computed from DynamoDB scan

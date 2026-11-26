@@ -1,0 +1,318 @@
+=== Task 6: Safe startup and recovery without manual AWS commands ===
+Run (UTC): 2026-11-26T04:29:22Z
+Disruptive actions ONLY on the isolated stack (Floci :4567, supporthub-iso-*).
+Production (:4566, supporthub-prod-*) only via --dry-run / --verify-only (read-only).
+Scripts under test: infra/floci/floci-queues.sh, infra/floci/start-production-workers.sh
+Output below is filtered to PASS/FAIL/CHANGE/PLAN/ERROR/summary lines. No values are printed by the scripts.
+
+--- RUN STOPPED BY USER REQUEST at 2026-11-26T04:37:28Z (before any Task 6 test started) ---
+Covered by Task 5 runs: normal startup (T5.1, exit 0: stopped isolated workers started and
+reused) and repeated startup (T5.2, exit 0, 0 changes). Production startup configuration was
+verified non-disruptively earlier (03-production-startup-script.txt: --verify-only, 29 PASS,
+0 FAIL, 0 actions; 04: floci-queues --env production --verify-only, 21 PASS).
+NOT executed: Floci-not-ready refusal, isolated worker-stop recovery, isolated Floci
+interruption recovery, queue-processing resume, invalid-configuration cases, data-preservation
+diff after recovery tests. Production restart recovery was NOT tested (by restriction).
+Post-stop read-only production check: supporthub-floci and both supporthub-prod-* workers
+running, original StartedAt (03:35/03:36 UTC), restarts=0, unless-stopped; production queue
+0/0, DLQ 0; 0 error lines in worker logs (last 1 h); 4 Vercel /api/health -> 200.
+Task 6 result: 2 PASS (via T5.1/T5.2), remaining tests not run -> PARTIAL.
+
+=== RESUMED 2026-11-26T04:50:10Z - remaining Task 6 tests (isolated stack only for disruptive steps) ===
+
+--- T6.2 Dependency readiness: Floci not responding (docker pause supporthub-iso-floci) ---
+paused supporthub-iso-floci (state: paused)
+$ env FLOCI_WAIT_SECONDS=10 bash infra/floci/start-production-workers.sh --env isolated
+      [PASS] docker, aws, curl, node available; Docker running
+      [PASS] article: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_URL SQS_QUEUE_URL)
+      [PASS] editorial: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_URL ARTICLE_EVENTS_QUEUE_URL)
+        ERROR: supporthub-iso-floci publishes port 'none', expected 4567 - refusing to mix environments
+    ERROR: floci-queues.sh found an unexpected configuration (exit 3) - not starting workers
+    -> exit 3 (4s) [floci-paused]
+unpaused supporthub-iso-floci (state: running)
+        ERROR: supporthub-iso-floci publishes port 'none', expected 4567 - refusing to mix environments
+    ERROR: floci-queues.sh found an unexpected configuration (exit 3) - not starting workers
+FAIL | T6.2 exit 3
+PASS | T6.2 workers not touched while Floci was unavailable (same StartedAt)
+PASS | T6.2 isolated Floci healthy again after unpause
+
+FIX applied after the T6.2 FAIL above: floci-queues.sh now (a) detects State.Paused -> exit 4 'not ready' (never auto-unpauses) and (b) reads the host port from HostConfig.PortBindings instead of 'docker port' (empty for a paused container).
+--- T6.2 (re-run after fix) ---
+paused supporthub-iso-floci (state: paused)
+$ env FLOCI_WAIT_SECONDS=10 bash infra/floci/start-production-workers.sh --env isolated
+      [PASS] docker, aws, curl, node available; Docker running
+      [PASS] article: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_URL SQS_QUEUE_URL)
+      [PASS] editorial: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_URL ARTICLE_EVENTS_QUEUE_URL)
+        ERROR: supporthub-iso-floci is paused - Floci not ready (unpause it deliberately: docker unpause supporthub-iso-floci)
+    ERROR: Floci is not running/healthy (floci-queues.sh exit 4) - not starting workers
+    -> exit 4 (3s) [floci-paused-rerun]
+unpaused supporthub-iso-floci (state: running)
+        ERROR: supporthub-iso-floci is paused - Floci not ready (unpause it deliberately: docker unpause supporthub-iso-floci)
+    ERROR: Floci is not running/healthy (floci-queues.sh exit 4) - not starting workers
+PASS | T6.2 Floci paused/not ready -> exit 4 'Floci not ready ... not starting workers'
+PASS | T6.2 workers not touched (same StartedAt)
+--- T6.2b Readiness wait timeout (Floci running but not answering on its endpoint port is the paused case above); regression check that a healthy Floci still passes the port check ---
+$ bash infra/floci/floci-queues.sh --env isolated --verify-only
+      [PASS] container supporthub-iso-floci exists (count=1, reused)
+      [PASS] supporthub-iso-floci running
+      [PASS] supporthub-iso-floci publishes 4566 on host port 4567 only (environment separation)
+      [PASS] restart policy unless-stopped
+      [PASS] IAM enforcement enabled
+      [PASS] attached to network supporthub-iso-net
+      [PASS] Floci healthy, SQS running (after ~1s)
+      [PASS] AWS CLI connectivity
+      [PASS] no duplicate supporthub-article-events queues (found 1)
+      [PASS] DLQ supporthub-article-events-dlq exists (reused)
+      [PASS] queue supporthub-article-events exists (reused, not recreated)
+      [PASS] VisibilityTimeout=30 (expected 30)
+      [PASS] redrive target=arn:aws:sqs:us-east-1:000000000000:supporthub-article-events-dlq
+      [PASS] maxReceiveCount=5 (expected 5)
+      [PASS] IAM user supporthub-article-service exists (reused)
+      [PASS] supporthub-article-service policy SupportHubArticleSQSPublisher matches infra/iam/article-sqs-policy.json
+      [PASS] supporthub-article-service key file article.aws.env valid (key#6096508787, 1 key(s) total) - reused, no new key
+      [PASS] IAM user supporthub-editorial-service exists (reused)
+      [PASS] supporthub-editorial-service policy SupportHubEditorialSQSConsumer matches infra/iam/editorial-sqs-consumer-policy.json
+      [PASS] supporthub-editorial-service key file editorial.aws.env valid (key#b15538ae89, 1 key(s) total) - reused, no new key
+      [PASS] editorial consumer key can reach supporthub-article-events
+    floci-queues (isolated): 21 passed, 0 failed, 0 change(s) [verify-only]
+    COUNTS env=isolated floci_containers=1 article_events_queues=3 queue_iam_users=2/2 queue_iam_access_keys=2 all_iam_users=4
+    -> exit 0 (91s) [port-check-regression]
+PASS | T6.2b healthy isolated Floci: port check via PortBindings passes, 21/21 (exit 0)
+
+--- T6.3 Recovery after an isolated worker stops ---
+docker stop supporthub-iso-editorial-article-worker -> exited
+$ bash infra/floci/start-production-workers.sh --env isolated
+      [PASS] docker, aws, curl, node available; Docker running
+      [PASS] article: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_URL SQS_QUEUE_URL)
+      [PASS] editorial: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_URL ARTICLE_EVENTS_QUEUE_URL)
+        floci-queues (isolated): 21 passed, 0 failed, 0 change(s)
+      [PASS] Floci healthy; supporthub-article-events + DLQ + redrive + IAM keys verified (floci-queues.sh exit 0)
+      [PASS] network supporthub-iso-net exists
+      [PASS] supporthub-iso-floci reachable as 'floci' on supporthub-iso-net
+      [PASS] supporthub-iso-postgres healthy
+      [PASS] supporthub-iso-article-outbox-worker exists with expected image/command/network/restart policy/env (reused)
+      [PASS] supporthub-iso-article-outbox-worker already running (no duplicate started)
+      [PASS] supporthub-iso-editorial-article-worker exists with expected image/command/network/restart policy/env (reused)
+      [PASS] started existing supporthub-iso-editorial-article-worker
+      [PASS] supporthub-iso-article-outbox-worker running restarts=0 restart-policy=unless-stopped
+      [PASS] supporthub-iso-article-outbox-worker startup log: 'Article SQS outbox scheduler started'
+      [PASS] supporthub-iso-article-outbox-worker: no connection/auth errors since Floci was confirmed ready
+      [PASS] supporthub-iso-article-outbox-worker: single instance (running count 1)
+      [PASS] supporthub-iso-editorial-article-worker running restarts=0 restart-policy=unless-stopped
+      [PASS] supporthub-iso-editorial-article-worker startup log: 'Editorial Article Event Consumer started'
+      [PASS] supporthub-iso-editorial-article-worker: no connection/auth errors since Floci was confirmed ready
+      [PASS] supporthub-iso-editorial-article-worker: single instance (running count 1)
+     Worker startup (isolated): 19 passed, 0 failed
+    -> exit 0 (122s) [worker-stopped]
+      [PASS] supporthub-iso-article-outbox-worker already running (no duplicate started)
+      [PASS] started existing supporthub-iso-editorial-article-worker
+PASS | T6.3 stopped worker restarted by the script (exit 0, existing container reused, state running)
+PASS | T6.3 healthy article worker left running (not restarted)
+PASS | T6.3 exactly one editorial worker container (no duplicate created)
+
+--- T6.4 Recovery after an isolated Floci interruption (docker stop supporthub-iso-floci while workers run) ---
+stopped supporthub-iso-floci at 2026-11-26T04:55:00Z (state exited); workers left running for 25 s
+PASS | T6.4 outage observed by the consumer (2 'SQS polling failed' lines); worker stayed up: running
+$ bash infra/floci/start-production-workers.sh --env isolated
+      [PASS] docker, aws, curl, node available; Docker running
+      [PASS] article: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_URL SQS_QUEUE_URL)
+      [PASS] editorial: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_URL ARTICLE_EVENTS_QUEUE_URL)
+          [CHANGE] started stopped container supporthub-iso-floci
+        floci-queues (isolated): 20 passed, 0 failed, 1 change(s)
+      [PASS] Floci healthy; supporthub-article-events + DLQ + redrive + IAM keys verified (floci-queues.sh exit 0)
+      [PASS] network supporthub-iso-net exists
+      [PASS] supporthub-iso-floci reachable as 'floci' on supporthub-iso-net
+      [PASS] supporthub-iso-postgres healthy
+      [PASS] supporthub-iso-article-outbox-worker exists with expected image/command/network/restart policy/env (reused)
+      [PASS] supporthub-iso-article-outbox-worker already running (no duplicate started)
+      [PASS] supporthub-iso-editorial-article-worker exists with expected image/command/network/restart policy/env (reused)
+      [PASS] supporthub-iso-editorial-article-worker already running (no duplicate started)
+      [PASS] supporthub-iso-article-outbox-worker running restarts=0 restart-policy=unless-stopped
+      [PASS] supporthub-iso-article-outbox-worker startup log: 'Article SQS outbox scheduler started'
+      [PASS] supporthub-iso-article-outbox-worker: no connection/auth errors since Floci was confirmed ready
+      [PASS] supporthub-iso-article-outbox-worker: single instance (running count 1)
+      [PASS] supporthub-iso-editorial-article-worker running restarts=0 restart-policy=unless-stopped
+      [PASS] supporthub-iso-editorial-article-worker startup log: 'Editorial Article Event Consumer started'
+      [PASS] supporthub-iso-editorial-article-worker: no connection/auth errors since Floci was confirmed ready
+      [PASS] supporthub-iso-editorial-article-worker: single instance (running count 1)
+     Worker startup (isolated): 19 passed, 0 failed
+    -> exit 0 (124s) [floci-stopped]
+          [CHANGE] started stopped container supporthub-iso-floci
+      [PASS] Floci healthy; supporthub-article-events + DLQ + redrive + IAM keys verified (floci-queues.sh exit 0)
+PASS | T6.4 script started Floci, waited for health, verified queues/IAM, workers healthy (exit 0) - no manual AWS command
+PASS | T6.4 consumer polling recovered by itself (0 polling errors in the last 25 s)
+PASS | T6.4 editorial worker was not restarted (same StartedAt) - in-process retry recovered
+PASS | T6.4 queue + IAM users/keys persisted across the Floci restart (persistent storage; nothing recreated; keys=4)
+
+--- T6.5 Queue processing resumes end-to-end after the Floci interruption ---
+inserted pending outbox row 0ce02718-3021-4d12-948c-a7670370047a (isolated DB only) replaying already-processed inbox event 0bac0bc7-9891-433a-8dbb-9885d307c252 (article 232); DLQ before=8
+PASS | T6.5 Article outbox worker published the row to SQS automatically (status=published after ~6 s)
+editorial worker log: Article event acknowledged: duplicate
+PASS | T6.5 Editorial consumer received and acknowledged the event ('Article event acknowledged: duplicate')
+PASS | T6.5 queue drained (visible/in-flight 0/0), DLQ unchanged (8 -> 8)
+PASS | T6.5 idempotent: still exactly 1 inbox row for the event, inbox total unchanged (136) - no duplicate review
+
+--- T6.6 Missing or invalid configuration rejected before any change (production profile, --dry-run; 0700 temp copies deleted after each case) ---
+$ env SUPPORTHUB_WORKER_CONFIG_DIR=C:/Users/OMEN/AppData/Local/Temp/claude/a6414b569313e83b/90df504d-cd78-4d4c-9151-691158a65cb9/scratchpad/cfg-empty bash infra/floci/start-production-workers.sh --env production --dry-run
+      [PASS] docker, aws, curl, node available; Docker running
+    ERROR: configuration file missing: C:/Users/OMEN/AppData/Local/Temp/claude/a6414b569313e83b/90df504d-cd78-4d4c-9151-691158a65cb9/scratchpad/cfg-empty/article.restricted.env
+    -> exit 2 (1s) [cfg-empty]
+    ERROR: configuration file missing: <scratchpad>/cfg-empty/article.restricted.env
+PASS | T6.6 missing private configuration files (empty directory) -> exit 2
+$ env SUPPORTHUB_WORKER_CONFIG_DIR=C:/Users/OMEN/AppData/Local/Temp/claude/a6414b569313e83b/90df504d-cd78-4d4c-9151-691158a65cb9/scratchpad/cfg-novar bash infra/floci/start-production-workers.sh --env production --dry-run
+      [PASS] docker, aws, curl, node available; Docker running
+      [PASS] article.restricted.env present outside the repository
+      [PASS] article: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION AWS_ENDPOINT_URL SQS_QUEUE_URL DATABASE_URL_POOLED NODE_ENV)
+      [PASS] article: queue URL = production queue
+      [PASS] article: database identity role=supporthub_article_app (restricted, TLS verify-full)
+      [PASS] article: NODE_ENV=production
+      [PASS] editorial.restricted.env present outside the repository
+    ERROR: editorial: missing/empty variables: ARTICLE_SERVICE_URL (in C:/Users/OMEN/AppData/Local/Temp/claude/a6414b569313e83b/90df504d-cd78-4d4c-9151-691158a65cb9/scratchpad/cfg-novar/editorial.restricted.env)
+    -> exit 2 (3s) [cfg-novar]
+    ERROR: editorial: missing/empty variables: ARTICLE_SERVICE_URL (in <scratchpad>/cfg-novar/editorial.restricted.env)
+PASS | T6.6 required variable ARTICLE_SERVICE_URL removed -> exit 2
+$ env SUPPORTHUB_WORKER_CONFIG_DIR=C:/Users/OMEN/AppData/Local/Temp/claude/a6414b569313e83b/90df504d-cd78-4d4c-9151-691158a65cb9/scratchpad/cfg-empty2 bash infra/floci/start-production-workers.sh --env production --dry-run
+      [PASS] docker, aws, curl, node available; Docker running
+      [PASS] article.restricted.env present outside the repository
+    ERROR: article: missing/empty variables: AWS_SECRET_ACCESS_KEY (in C:/Users/OMEN/AppData/Local/Temp/claude/a6414b569313e83b/90df504d-cd78-4d4c-9151-691158a65cb9/scratchpad/cfg-empty2/article.restricted.env)
+    -> exit 2 (2s) [cfg-empty2]
+    ERROR: article: missing/empty variables: AWS_SECRET_ACCESS_KEY (in <scratchpad>/cfg-empty2/article.restricted.env)
+PASS | T6.6 empty AWS_SECRET_ACCESS_KEY -> exit 2
+$ env SUPPORTHUB_WORKER_CONFIG_DIR=C:/Users/OMEN/AppData/Local/Temp/claude/a6414b569313e83b/90df504d-cd78-4d4c-9151-691158a65cb9/scratchpad/cfg-owner bash infra/floci/start-production-workers.sh --env production --dry-run
+      [PASS] docker, aws, curl, node available; Docker running
+      [PASS] article.restricted.env present outside the repository
+      [PASS] article: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION AWS_ENDPOINT_URL SQS_QUEUE_URL DATABASE_URL_POOLED NODE_ENV)
+      [PASS] article: queue URL = production queue
+    ERROR: article: DATABASE_URL_POOLED role is not a restricted supporthub_*_app role, owner role
+    -> exit 2 (4s) [cfg-owner]
+    ERROR: article: DATABASE_URL_POOLED role is not a restricted supporthub_*_app role, owner role
+PASS | T6.6 database URL switched to the owner role -> exit 2
+$ env SUPPORTHUB_WORKER_CONFIG_DIR=C:/Users/OMEN/AppData/Local/Temp/claude/a6414b569313e83b/90df504d-cd78-4d4c-9151-691158a65cb9/scratchpad/cfg-nossl bash infra/floci/start-production-workers.sh --env production --dry-run
+      [PASS] docker, aws, curl, node available; Docker running
+      [PASS] article.restricted.env present outside the repository
+      [PASS] article: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION AWS_ENDPOINT_URL SQS_QUEUE_URL DATABASE_URL_POOLED NODE_ENV)
+      [PASS] article: queue URL = production queue
+      [PASS] article: database identity role=supporthub_article_app (restricted, TLS verify-full)
+      [PASS] article: NODE_ENV=production
+      [PASS] editorial.restricted.env present outside the repository
+      [PASS] editorial: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION SERVICE_SHARED_SECRET ARTICLE_SERVICE_URL SQS_ENDPOINT_URL ARTICLE_EVENTS_QUEUE_URL DATABASE_URL_POOLED NODE_ENV)
+      [PASS] editorial: queue URL = production queue
+    ERROR: editorial: DATABASE_URL_POOLED sslmode is not verify-full
+    -> exit 2 (4s) [cfg-nossl]
+    ERROR: editorial: DATABASE_URL_POOLED sslmode is not verify-full
+PASS | T6.6 database TLS downgraded (sslmode=disable) -> exit 2
+$ env SUPPORTHUB_WORKER_CONFIG_DIR=C:/Users/OMEN/AppData/Local/Temp/claude/a6414b569313e83b/90df504d-cd78-4d4c-9151-691158a65cb9/scratchpad/cfg-devq bash infra/floci/start-production-workers.sh --env production --dry-run
+      [PASS] docker, aws, curl, node available; Docker running
+      [PASS] article.restricted.env present outside the repository
+      [PASS] article: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION AWS_ENDPOINT_URL SQS_QUEUE_URL DATABASE_URL_POOLED NODE_ENV)
+      [PASS] article: queue URL = production queue
+      [PASS] article: database identity role=supporthub_article_app (restricted, TLS verify-full)
+      [PASS] article: NODE_ENV=production
+      [PASS] editorial.restricted.env present outside the repository
+      [PASS] editorial: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION SERVICE_SHARED_SECRET ARTICLE_SERVICE_URL SQS_ENDPOINT_URL ARTICLE_EVENTS_QUEUE_URL DATABASE_URL_POOLED NODE_ENV)
+    ERROR: editorial: queue URL does not point to supporthub-article-events-production
+    -> exit 3 (4s) [cfg-devq]
+    ERROR: editorial: queue URL does not point to supporthub-article-events-production
+PASS | T6.6 consumer queue URL pointed at the dev queue -> exit 3
+$ env SUPPORTHUB_WORKER_CONFIG_DIR=C:/Users/OMEN/AppData/Local/Temp/claude/a6414b569313e83b/90df504d-cd78-4d4c-9151-691158a65cb9/scratchpad/cfg-isoep bash infra/floci/start-production-workers.sh --env production --dry-run
+      [PASS] docker, aws, curl, node available; Docker running
+      [PASS] article.restricted.env present outside the repository
+      [PASS] article: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION AWS_ENDPOINT_URL SQS_QUEUE_URL DATABASE_URL_POOLED NODE_ENV)
+      [PASS] article: queue URL = production queue
+      [PASS] article: database identity role=supporthub_article_app (restricted, TLS verify-full)
+    ERROR: article: AWS_ENDPOINT_URL must be http://floci:4566 (main Floci on floci_default)
+    -> exit 3 (3s) [cfg-isoep]
+    ERROR: article: AWS_ENDPOINT_URL must be http://floci:4566 (main Floci on floci_default)
+PASS | T6.6 AWS endpoint pointed at the ISOLATED Floci (environment mixing) -> exit 3
+$ bash infra/floci/start-production-workers.sh --env staging
+    -> exit 2 (1s) [bad-env]
+PASS | T6.6 unknown environment name 'staging' -> exit 2
+$ bash infra/floci/floci-queues.sh
+    ERROR: --env production|isolated is required
+    -> exit 2 (0s) [queues-noenv]
+PASS | T6.6 floci-queues.sh without --env -> exit 2 (never guesses an environment)
+PASS | T6.6 all temporary config copies deleted
+PASS | T6.6 production workers untouched by the invalid-config runs
+
+--- T6.7 Production worker startup configuration - non-disruptive (--verify-only), also validates the T6.2 fix on :4566 ---
+$ bash infra/floci/start-production-workers.sh --env production --verify-only
+      [PASS] docker, aws, curl, node available; Docker running
+      [PASS] article.restricted.env present outside the repository
+      [PASS] article: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION AWS_ENDPOINT_URL SQS_QUEUE_URL DATABASE_URL_POOLED NODE_ENV)
+      [PASS] article: queue URL = production queue
+      [PASS] article: database identity role=supporthub_article_app (restricted, TLS verify-full)
+      [PASS] article: NODE_ENV=production
+      [PASS] editorial.restricted.env present outside the repository
+      [PASS] editorial: all required variables set (AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION SERVICE_SHARED_SECRET ARTICLE_SERVICE_URL SQS_ENDPOINT_URL ARTICLE_EVENTS_QUEUE_URL DATABASE_URL_POOLED NODE_ENV)
+      [PASS] editorial: queue URL = production queue
+      [PASS] editorial: database identity role=supporthub_editorial_app (restricted, TLS verify-full)
+      [PASS] editorial: SERVICE_SHARED_SECRET length >= 32
+      [PASS] editorial: ARTICLE_SERVICE_URL uses HTTPS
+      [PASS] editorial: NODE_ENV=production
+        floci-queues (production): 21 passed, 0 failed, 0 change(s) [verify-only]
+      [PASS] Floci healthy; supporthub-article-events-production + DLQ + redrive + IAM keys verified (floci-queues.sh exit 0)
+      [PASS] network floci_default exists
+      [PASS] supporthub-floci reachable as 'floci' on floci_default
+      [PASS] Neon pooler reachable on TCP 5432 (host not printed)
+      [PASS] Article service health 200 (https://supporthub-article-service.vercel.app)
+      [PASS] supporthub-prod-article-outbox-worker exists with expected image/command/network/restart policy/env (reused)
+      [PASS] supporthub-prod-article-outbox-worker already running (no duplicate started)
+      [PASS] supporthub-prod-editorial-article-worker exists with expected image/command/network/restart policy/env (reused)
+      [PASS] supporthub-prod-editorial-article-worker already running (no duplicate started)
+      [PASS] supporthub-prod-article-outbox-worker running restarts=0 restart-policy=unless-stopped
+      [PASS] supporthub-prod-article-outbox-worker: no connection/auth errors since Floci was confirmed ready
+      [PASS] supporthub-prod-article-outbox-worker: single instance (running count 1)
+      [PASS] supporthub-prod-editorial-article-worker running restarts=0 restart-policy=unless-stopped
+      [PASS] supporthub-prod-editorial-article-worker startup log: 'Editorial Article Event Consumer started'
+      [PASS] supporthub-prod-editorial-article-worker: no connection/auth errors since Floci was confirmed ready
+      [PASS] supporthub-prod-editorial-article-worker: single instance (running count 1)
+     Worker startup (production): 29 passed, 0 failed, 0 action(s) planned
+    -> exit 0 (69s) [prod-verify]
+        floci-queues (production): 21 passed, 0 failed, 0 change(s) [verify-only]
+      [PASS] Floci healthy; supporthub-article-events-production + DLQ + redrive + IAM keys verified (floci-queues.sh exit 0)
+     Worker startup (production): 29 passed, 0 failed, 0 action(s) planned
+PASS | T6.7 production verify-only: all checks pass, 0 actions needed (exit 0)
+
+--- T6.8 Environment separation + production untouched (read-only) ---
+  SAME prod_queues=4
+  SAME prod_iam_users=6
+  SAME prod_access_keys_total=5
+  SAME prod_queue_attrs=60 {"deadLetterTargetArn":"arn:aws:sqs:us-east-1:000000000000:supporthub-article-events-production-dlq","maxReceiveCount":"5"}
+  SAME prod[supporthub-floci]=running started=2026-11-26T03:36:00.103492492Z restarts=0 policy=unless-stopped
+  SAME prod[supporthub-prod-article-outbox-worker]=running started=2026-11-26T03:35:10.403863535Z restarts=0 policy=unless-stopped
+  SAME prod[supporthub-prod-editorial-article-worker]=running started=2026-11-26T03:35:10.41324482Z restarts=0 policy=unless-stopped
+PASS | T6.8 production Floci/workers/queue attributes/IAM user+key counts identical to the 04:29Z snapshot (same StartedAt, restarts=0)
+PASS | T6.8 supporthub-iso-floci not attached to the production network floci_default
+PASS | T6.8 supporthub-iso-article-outbox-worker not attached to the production network floci_default
+PASS | T6.8 supporthub-iso-editorial-article-worker not attached to the production network floci_default
+PASS | T6.8 supporthub-floci not attached to the isolated network
+PASS | T6.8 supporthub-prod-article-outbox-worker not attached to the isolated network
+PASS | T6.8 supporthub-prod-editorial-article-worker not attached to the isolated network
+  (separation enforced by the scripts and tested: T6.6 'isoep' case exit 3; floci-queues checks the host port binding of the profile's container; duplicate check limited to the profile's network)
+
+--- T6.9 Existing application data preserved (isolated) - BEFORE (04:29Z) vs now ---
+  containers_total                                   before=24                           after=24
+  containers_iso                                     before=10                           after=10
+  count[supporthub-iso-floci]                        before=1                            after=1
+  count[supporthub-iso-postgres]                     before=1                            after=1
+  count[supporthub-iso-article-outbox-worker]        before=1                            after=1
+  count[supporthub-iso-editorial-article-worker]     before=1                            after=1
+  count[supporthub-floci]                            before=1                            after=1
+  count[supporthub-prod-article-outbox-worker]       before=1                            after=1
+  count[supporthub-prod-editorial-article-worker]    before=1                            after=1
+  iso_queues                                         before=3                            after=3
+  iso_queue_names                                    before=supporthub-article-events,supporthub-article-events-demo,supporthub-article-events-dlq, after=supporthub-article-events,supporthub-article-events-demo,supporthub-article-events-dlq,
+  iso_iam_users                                      before=4                            after=4
+  iso_access_keys_total                              before=4                            after=4
+  iso_secrets                                        before=7                            after=7
+  iso_db_articles                                    before=229                          after=229
+  iso_db_users                                       before=7                            after=7
+  iso_db_outbox                                      before=136                          after=137
+  iso_db_inbox                                       before=136                          after=136
+  iso_db_search_logs                                 before=436                          after=436
+  iso_ddb_items                                      before=33                           after=33
+  iso_s3_exports                                     before=8                            after=8
+PASS | T6.9 articles, users, inbox, search logs, DynamoDB items, S3 exports, queues, IAM users/keys, secrets, containers unchanged after Floci stop/start, pause and worker stop
+PASS | T6.9 article_event_outbox +1 = exactly the T6.5 test row (136 -> 137, status published)
+
+Task 6 TOTAL: 38 PASS, 1 FAIL (the single FAIL is the first T6.2 run, fixed and re-run: PASS). Normal + repeated startup covered by T5.1/T5.2 in file 05.
