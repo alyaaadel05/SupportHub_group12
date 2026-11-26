@@ -33,11 +33,21 @@ async function flush() {
     }
     return { sent };
   } catch (error) {
-    console.error("CloudWatch metrics publish failed:", error.name || "Error");
+    console.error("CloudWatch metrics publish failed:", describeFailure(error));
     return { sent, failed: batch.length - sent };
   }
 }
 
+// The CloudWatch SDK speaks AWS JSON 1.0, so a non-JSON error body - the Cloudflare gateway's
+// "Floci unreachable" (502) or an edge error page when the tunnel is down - surfaces as a bare
+// SyntaxError. Report the HTTP status and what it means instead (no body or secrets are logged).
+function describeFailure(error) {
+  const status = error?.$metadata?.httpStatusCode ?? error?.$response?.statusCode;
+  const where = status ? `HTTP ${status}` : "no HTTP response";
+  if (error?.name === "SyntaxError") return `${where} - non-JSON response from the gateway (Floci not reached: tunnel/host unavailable or request refused)`;
+  return `${where} - ${error?.name || "Error"}`;
+}
+
 function pending() { return buffer.length; }
 
-module.exports = { record, flush, pending };
+module.exports = { record, flush, pending, describeFailure };
