@@ -1,0 +1,68 @@
+SupportHub Group 12 - Search API production bugs (Vercel logs 27 Nov ~01:10 Cairo = 26 Nov ~23:10 UTC)
+==========================================================================
+Investigated by Alyaa Adel (AI-assisted). Read-only checks only; no env variable changed, nothing
+deployed, no database change made by this investigation.
+
+BUG 1 - POST /api/articles/21/votes -> 500 "permission denied for table helpfulness_votes"
+--------------------------------------------------------------------------
+Code (services/search-analytics-service/services/feedbackService.js, vote()):
+  SELECT 1 FROM search_published_articles WHERE article_id=$1            (published check)
+  INSERT INTO helpfulness_votes(article_id,user_id,helpful) VALUES($1,$2,$3)
+    ON CONFLICT(article_id,user_id) DO UPDATE SET helpful=EXCLUDED.helpful, updated_at=NOW()
+    RETURNING *
+  No DELETE. vote_id is serial (helpfulness_votes_vote_id_seq). Conflict target = UNIQUE (article_id, user_id).
+  PostgreSQL requires UPDATE privilege on the SET columns for INSERT ... ON CONFLICT DO UPDATE, and
+  checks it even when no conflict occurs, so every vote fails without it.
+Production privileges of supporthub_search_app (read-only, has_table/sequence/column_privilege):
+  table                      SELECT INSERT UPDATE DELETE  key
+  helpfulness_votes          yes    yes    NO     no      vote_id serial, sequence USAGE yes
+  article_feedback           yes    yes    yes    no      feedback_id serial, sequence USAGE yes
+  search_query_logs          yes    yes    no     no      search_id serial, sequence USAGE yes
+  article_views              yes    yes    no     no      view_id serial, sequence USAGE yes
+  search_result_clicks       yes    yes    no     no      click_id serial, sequence USAGE yes
+  search_published_articles  yes    yes    yes    yes     (no sequence; indexService DELETE + upsert)
+  helpfulness_votes column UPDATE: none of vote_id, article_id, user_id, helpful, created_at, updated_at.
+What the code writes vs what is granted:
+  article_feedback: INSERT + UPDATE(sentiment_status, sentiment_label, sentiment_confidence) - granted.
+  search_query_logs / article_views / search_result_clicks: INSERT only - granted.
+  search_published_articles: INSERT ... ON CONFLICT DO UPDATE + DELETE - granted.
+  Search terms are NOT stored in Postgres beyond search_query_logs (live term counters are DynamoDB).
+  => helpfulness_votes is the ONLY missing grant. Sequences already have USAGE; no sequence grant needed.
+
+MINIMAL GRANT (to run by Alyaa in the Neon SQL Editor, branch production, db neondb, as neondb_owner):
+  GRANT UPDATE (helpful, updated_at) ON TABLE public.helpfulness_votes TO supporthub_search_app;
+  (column-level: only the two columns the upsert sets; no table-wide UPDATE, no DELETE)
+
+READ-ONLY confirmation query afterwards:
+  SELECT column_name,
+         has_column_privilege('supporthub_search_app', 'public.helpfulness_votes', column_name, 'UPDATE') AS can_update
+  FROM information_schema.columns
+  WHERE table_schema = 'public' AND table_name = 'helpfulness_votes'
+  ORDER BY ordinal_position;
+  Expected: can_update = true for helpful and updated_at ONLY; false for vote_id, article_id, user_id, created_at.
+
+BUG 2 - "CloudWatch metrics publish failed: SyntaxError"
+--------------------------------------------------------------------------
+Root cause: the CloudWatch SDK (@aws-sdk/client-cloudwatch 3.1172.0) uses AWS JSON 1.0. When the
+  gateway cannot reach Floci it answers with a NON-JSON body - its own 502 "Floci unreachable"
+  (text/plain, infra/cloudflare/floci-gateway/src/index.js) or a Cloudflare edge error page - and the
+  SDK's JSON parser throws SyntaxError. metricsService logged only error.name, hiding the status.
+Why at that time: the host lost network 23:10-23:19 UTC (01:10-01:19 Cairo) -
+  supporthub-floci: 12 "DNS forwarding failed on all upstreams ... Receive timed out" in 23:10-23:19;
+  supporthub-cloudflared: 27 ERR "failed to dial to edge with quic: timeout" in 23:10-23:19, tunnel
+  re-registered 23:20:43Z (also a short episode at 22:50-22:59). During that window every Vercel
+  request that flushed metrics hit the gateway's 502 -> SyntaxError on "many requests".
+Reproduction with the REAL metricsService + awsClients against a local stub answering like the gateway:
+  BEFORE fix: 502 text / 530 HTML / 403 text -> "CloudWatch metrics publish failed: SyntaxError";
+              200 {} -> sent 1.
+  AFTER fix:  "CloudWatch metrics publish failed: HTTP 502 - non-JSON response from the gateway (Floci not
+              reached: tunnel/host unavailable or request refused)" (same for 530 / 403); 200 {} -> sent 1.
+Not a payload or code-path bug: through the LIVE gateway with the Vercel Search env shape, all real
+  batches succeed (Count, Milliseconds, request-middleware batch, search batch, 10-min-old timestamp:
+  5/5 HTTP 200). Live from Vercel now (6 public searches via Pages, 2026-11-27): Searches Sum 7
+  (6 + 1 earlier), Requests 8, LatencyMs SampleCount 8 - every metric delivered.
+Fix: services/search-analytics-service/services/metricsService.js - describeFailure() logs the HTTP
+  status and meaning (no response body, no secrets). Behaviour unchanged otherwise (never throws,
+  never breaks the API). New test tests/metrics-gateway-error.test.js (3); Search suite 116/116 PASS.
+Operational note: the real cause of lost metrics is the host's network/tunnel availability (the
+  Floci host must stay online during the demo); this is documented, not changed.
