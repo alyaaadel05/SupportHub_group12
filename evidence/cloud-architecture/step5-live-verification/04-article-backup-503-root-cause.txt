@@ -15,3 +15,10 @@ Reproduction with the REAL module, Vercel Article env shape (gateway URL, Articl
 Fix: one wrapper call, withFlociAccess(client), same as the S3 client. Article suite 64/64 PASS.
 Status: fixed locally; needs push + Article redeploy, then
   BACKUP_ONLY_ARTICLE=23 node tests/integration/production-live-aws-e2e.mjs
+
+Re-run 2026-11-26T21:57:56Z (05-article-backup-rerun.txt): still 503 x3. Cause: the fix had NOT been
+  pushed - origin/main = 61c2361 (PR #13) does not contain withFlociAccess(client) in
+  secretsManagerService.js; the file is still uncommitted locally. The Ready deployment is the old code.
+Cleanup 2026-11-26 (approved): temporary SNS subscription to supporthub-identity-alerts-audit
+  unsubscribed and that queue deleted; supporthub-identity-security-alerts topic kept; both
+  supporthub-article-events-production queues (queue + DLQ) untouched.
