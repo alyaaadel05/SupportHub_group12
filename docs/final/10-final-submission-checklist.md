@@ -4,7 +4,8 @@ Verified 2026-11-25 on Windows / Docker Desktop, in the isolated stack (`support
 own Floci 2.5.0 and own PostgreSQL) unless a line says otherwise. Neon, Vercel and Cloudflare were
 not changed. Statuses: PASS (run and verified), IMPLEMENTED / NOT VERIFIED, FAIL, BLOCKED, OPTIONAL.
 
-- [ ] Neon password rotated
+- [x] Neon password rotated (done 2026-11-26; old credential rejected, services on restricted roles:
+      `evidence/production-security/database-credential-rotation.txt`)
 - [ ] All local changes reviewed by their owners
 - [ ] Commits made by the right student for their own component
 - [ ] Final version deployed; CSP header visible on the production site

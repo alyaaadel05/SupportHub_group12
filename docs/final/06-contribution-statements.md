@@ -45,7 +45,8 @@ client for Article and Search, publication notification outbox, SNS publication 
 the publication-outcome Lambda handler, migration runner with checksum and advisory locks,
 Editorial threat model and HTTP-level security test evidence
 (`services/editorial-service/docs/`), and the Editorial Docker setup. Her test suite
-(169 tests) passes on the integration branch.
+(183 tests, 0 failures, latest run 2026-11-26: `evidence/editorial-aws/FINAL_SUMMARY.txt`)
+passes on the integration branch.
 
 ## Nermeen Mostafa (239814) — Knowledge Search, Feedback & Analytics Service
 

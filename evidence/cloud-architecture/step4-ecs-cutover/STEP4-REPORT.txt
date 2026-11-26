@@ -1,0 +1,37 @@
+SupportHub Group 12 - Step 4: production worker cutover (legacy Docker workers -> ECS on Floci)
+==========================================================================
+Approval: REMOTE=local bash infra/floci/remote/cutover.sh --i-approve-production-cutover,
+including publishing Article 21's pending event once. Run 2026-11-26 20:06-20:10 UTC.
+Files: 01-pre-cutover-review.txt (script review, 14 mocked tests, image freshness),
+       02-cutover-run.txt (verbatim run), 03-post-cutover-verification.txt (receipt query).
+
+RESULT
+  pre-check: ECS 0/0/0 with no running tasks, both legacy workers running, images present   PASS
+  [2/4] legacy article outbox worker stopped; production queue drained 0/0/0, DLQ 0/0/0        PASS
+  [3/4] legacy editorial consumer stopped                                                      PASS
+  [4/4] ECS scaled to 1                                                                         PASS
+  readiness check reported FAILED although the printed state was the success condition
+    ("services: 1:0 1:0 1:0, started containers: 3"): DEFECT in the new readiness parser - the
+    Windows AWS CLI ends text output with CRLF, so the string compare never matched. The script
+    failed CLOSED as designed (exit 1, legacy workers NOT restarted, nothing else changed).
+    Fixed (tr -d '\r'), mock now emits CRLF; mocked suite 14/14 PASS.                         FIXED
+  Independent verification after the run (read-only):
+    legacy supporthub-prod-article-outbox-worker = exited, supporthub-prod-editorial-article-worker
+    = exited (containers kept for rollback)                                                    PASS
+    ECS article-outbox-worker / editorial-article-consumer / editorial-publication-worker:
+    desired 1 / running 1 / pending 0, containers on floci_default                             PASS
+    no duplicate workers: 0 legacy running + exactly 1 ECS task per worker                       PASS
+    worker logs: per-component secrets loaded (supporthub/article/database,
+    supporthub/editorial/database, supporthub/shared/service-hmac), start-up lines present      PASS
+  Article 21 pending publication event:
+    outbox 34121ea2-0be0-41db-b28a-8cc4348f89cc state=published attempts=1 at 20:09:33.354Z;
+    SNS MessageId 2feda4ac-a4ec-42c1-ae19-4ba43aed2182 (publication worker log);
+    Lambda receipt: exactly ONE row, same event_id, article 21, editorial.publication.published,
+    processed_at 20:09:39.170Z                                                                  PASS
+
+ROLLBACK (not needed): REMOTE=local bash infra/floci/remote/cutover.sh --rollback
+  (scales ECS to 0, waits for 0/0/0 and no tasks, only then restarts the legacy containers).
+"Original 18 SQS messages": not present before Step 1 (development queue supporthub-article-events,
+  0 messages; queue created 2026-11-19, MessageRetentionPeriod 345600 s = 4 days; the 18 were recorded
+  2026-11-22, so natural expiry or consumption before Step 1 are both consistent; not recreated).
+STATUS: STEP 4 COMPLETED.

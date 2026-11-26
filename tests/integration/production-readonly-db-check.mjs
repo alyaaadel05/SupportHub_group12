@@ -61,6 +61,29 @@ if (MODE === "roles") {
   console.log("role attributes:"); for (const s of r.roles) console.log("  " + JSON.stringify(s));
 }
 
+if (MODE === "vercel-roles") {
+  // Neon's pooler multiplexes clients onto one backend per role and hides client details, so a
+  // single API call cannot be attributed to a backend. Proof used instead: call each deployed API's
+  // health endpoint (runs SELECT 1 on its own pool), then list backends by role. Identity and Search
+  // roles are used ONLY by their Vercel APIs; Article/Editorial roles also by the ECS workers.
+  // neondb_owner must have no backend at all. No connection string is printed.
+  const apis = [["article", "https://supporthub-article-service.vercel.app"], ["identity", "https://supporthub-identity-service.vercel.app"],
+                ["editorial", "https://supporthub-editorial-service-group1.vercel.app"], ["search", "https://supporthub-search-analytics-group12.vercel.app"]];
+  const codes = {};
+  for (const [svc, base] of apis) codes[svc] = (await fetch(base + "/api/health", { signal: AbortSignal.timeout(20000) })).status;
+  const r = await readOnly("search", [["s", `SELECT usename, count(*)::int AS n FROM pg_stat_activity
+                                             WHERE datname = current_database() AND usename IS NOT NULL GROUP BY usename`]]);
+  const n = Object.fromEntries(r.s.map(x => [x.usename, x.n]));
+  let ok = 0, total = 0;
+  const chk = (pass, line) => { total++; if (pass) ok++; console.log(`${pass ? "PASS" : "FAIL"} | ${line}`); };
+  for (const [svc] of apis) chk(codes[svc] === 200 && (n[`supporthub_${svc}_app`] || 0) >= 1,
+    `Vercel ${svc} health HTTP ${codes[svc]} (SELECT 1 on Neon) | backends of supporthub_${svc}_app: ${n[`supporthub_${svc}_app`] || 0}`);
+  chk(!n.neondb_owner, `no neondb_owner backend while all four APIs are serving (owner backends: ${n.neondb_owner || 0})`);
+  console.log("backends by role:", JSON.stringify(n));
+  console.log(`Total: ${ok} passed, ${total - ok} failed`);
+  process.exitCode = ok === total ? 0 : 1;
+}
+
 if (MODE === "pending") {
   // Cut-over planning: what is waiting in the production outboxes (counts and states only).
   const ed = await readOnly("editorial", [

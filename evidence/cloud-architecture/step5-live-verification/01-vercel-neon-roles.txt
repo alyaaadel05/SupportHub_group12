@@ -1,0 +1,15 @@
+PASS | Vercel article health HTTP 200 (SELECT 1 on Neon) | backends of supporthub_article_app: 1
+PASS | Vercel identity health HTTP 200 (SELECT 1 on Neon) | backends of supporthub_identity_app: 1
+PASS | Vercel editorial health HTTP 200 (SELECT 1 on Neon) | backends of supporthub_editorial_app: 1
+PASS | Vercel search health HTTP 200 (SELECT 1 on Neon) | backends of supporthub_search_app: 1
+PASS | no neondb_owner backend while all four APIs are serving (owner backends: 0)
+backends by role: {"supporthub_article_app":1,"supporthub_editorial_app":1,"supporthub_identity_app":1,"supporthub_search_app":1}
+Total: 5 passed, 0 failed
+   supporthub/article/database -> role supporthub_article_app
+   supporthub/editorial/database -> role supporthub_editorial_app
+
+Method note: Neon's pooler multiplexes clients onto one backend per role and hides client
+details, so an individual API call cannot be attributed to a backend (a first attempt that looked
+for "the session that ran SELECT 1" saw 0 rows for that reason - discarded). Identity and Search
+roles are used ONLY by their Vercel APIs; Article/Editorial roles also by the ECS workers (secrets
+above). neondb_owner had no backend while all four APIs were serving. No connection string printed.
