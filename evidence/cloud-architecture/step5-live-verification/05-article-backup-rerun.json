@@ -1,0 +1,40 @@
+{
+  "at": "2026-11-26T21:58:04.823Z",
+  "via": "https://supporthub-group12.pages.dev",
+  "articleId": 23,
+  "mode": "backup-only",
+  "rows": [
+    {
+      "time": "2026-11-26T21:58:04.191Z",
+      "service": "Article",
+      "owner": "Alyaa",
+      "operation": "S3 backup export (PutObject)",
+      "endpoint": "POST /api/articles/23/versions/32/export",
+      "http": 503,
+      "aws": "no object found",
+      "result": "FAIL"
+    },
+    {
+      "time": "2026-11-26T21:58:04.823Z",
+      "service": "Article",
+      "owner": "Alyaa",
+      "operation": "S3 backup read-back (GetObject)",
+      "endpoint": "GET /api/articles/23/versions/32/export",
+      "http": 503,
+      "aws": "{\"error\":\"Required cloud service temporarily unavailable\"}",
+      "result": "FAIL"
+    },
+    {
+      "time": "2026-11-26T21:58:04.823Z",
+      "service": "Article",
+      "owner": "Alyaa",
+      "operation": "Secrets Manager runtime config (GetSecretValue)",
+      "endpoint": "(inside the backup export)",
+      "http": 503,
+      "aws": "export failed: {\"error\":\"Required cloud service temporarily unavailable\"}",
+      "result": "FAIL"
+    }
+  ],
+  "pass": 0,
+  "fail": 3
+}

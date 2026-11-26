@@ -1,0 +1,24 @@
+SupportHub Group 12 - Article S3 backup returned 503 on the deployed API: root cause and fix
+==========================================================================
+Live run 2026-11-26T21:53Z (03-live-aws-e2e.txt), alyaa.author, verification article 23, version 32:
+  POST https://supporthub-group12.pages.dev/api/articles/23/versions/32/export -> 503
+  {"error":"Required cloud service temporarily unavailable"}; no object in supporthub-article-backups.
+Root cause: services/article-service/services/secretsManagerService.js created its Secrets Manager
+  client WITHOUT withFlociAccess(), unlike services/s3Client.js. On Vercel the runtime-config read
+  (done before every backup) reached the Cloudflare gateway without the gateway token -> 403 ->
+  "Article backup configuration unavailable" -> 503. S3 was never called.
+  (The earlier 24/24 live gateway check built its own wrapped client, so it did not catch this.)
+Reproduction with the REAL module, Vercel Article env shape (gateway URL, Article component key,
+  gateway token; values not printed), against the LIVE gateway:
+  BEFORE fix: getArticleRuntimeConfig via live gateway: FAILED (Article runtime configuration unavailable)
+  AFTER fix:  getArticleRuntimeConfig via live gateway: OK (feature=article-backup, enabled is boolean)
+Fix: one wrapper call, withFlociAccess(client), same as the S3 client. Article suite 64/64 PASS.
+Status: fixed locally; needs push + Article redeploy, then
+  BACKUP_ONLY_ARTICLE=23 node tests/integration/production-live-aws-e2e.mjs
+
+Re-run 2026-11-26T21:57:56Z (05-article-backup-rerun.txt): still 503 x3. Cause: the fix had NOT been
+  pushed - origin/main = 61c2361 (PR #13) does not contain withFlociAccess(client) in
+  secretsManagerService.js; the file is still uncommitted locally. The Ready deployment is the old code.
+Cleanup 2026-11-26 (approved): temporary SNS subscription to supporthub-identity-alerts-audit
+  unsubscribed and that queue deleted; supporthub-identity-security-alerts topic kept; both
+  supporthub-article-events-production queues (queue + DLQ) untouched.
