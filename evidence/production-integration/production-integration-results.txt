@@ -1,0 +1,70 @@
+﻿SUPPORTHUB - GROUP 12
+PRODUCTION INTEGRATION EVIDENCE
+Recorded: 2026-11-26 03:11:15
+
+1. ROOT CAUSE
+Local Docker workers were connected to the development
+Neon database instead of production.
+
+2. IMPLEMENTED SOLUTION
+Dedicated production-connected Article and Editorial workers.
+Separate Floci SQS production queue and dead-letter queue.
+Separate least-privilege IAM identities.
+Verified production HMAC authentication.
+Private configuration files stored outside GitHub.
+
+3. VERIFIED RESULTS
+Production database connectivity: PASS
+IAM permission tests: 5/5 PASS
+Production HMAC authentication: HTTP 200
+Article Docker image build: PASS
+Editorial Docker image build: PASS
+Worker syntax checks: PASS
+Offline configuration preflight: PASS
+Top-level embedded environment files: 0
+Article worker startup: PASS
+Editorial consumer startup: PASS
+Editorial event acknowledgement: processed
+
+4. LIVE ARTICLE TEST
+Article ID: 21
+Review ID: 3
+Author ID: 9
+Title: How to Reset Your SupportHub Password
+
+Article creation: PASS
+Duplicate detection: PASS
+Submission: PASS
+SQS delivery: PASS
+Editorial review queue: PASS
+Approval: PASS
+Publication: PASS
+Search results: PASS
+Article reading: PASS
+Feedback form: PASS
+Turnstile verification: PASS
+Helpful vote submission: PASS
+Analytics feedback tracking: PASS
+Outdated flag submission: PASS
+
+Targeted live functional checks: 14/14
+
+5. ANALYTICS EVIDENCE
+Article views: 1
+Helpful votes: 1
+Unhelpful votes: 0
+
+6. KNOWN REMAINING ISSUES
+DynamoDB live counters unavailable.
+S3 analytics export not configured.
+Outdated article re-review lifecycle requires verification.
+Backend search index requires direct verification.
+Production database credential rotation required.
+Automated production worker startup pending.
+
+7. DEPLOYMENT LIMITATION
+The deployed frontend and APIs communicate with production
+Neon. Asynchronous workers currently run through local
+Docker and Floci, forming a hybrid deployment.
+
+No credentials or secret values are included in this file.
