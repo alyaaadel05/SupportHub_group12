@@ -97,6 +97,7 @@ services:
       - ../../services/editorial-service/migrations/005_editorial_event_inbox.sql:/docker-entrypoint-initdb.d/24-editorial-005.sql:ro
       - ../../services/editorial-service/migrations/006_editorial_publication_events.sql:/docker-entrypoint-initdb.d/25-editorial-006.sql:ro
       - ../../services/editorial-service/migrations/007_flag_integrity.sql:/docker-entrypoint-initdb.d/26-editorial-007.sql:ro
+      - ../../services/editorial-service/migrations/008_flag_one_open_per_article.sql:/docker-entrypoint-initdb.d/27-editorial-008.sql:ro
       - ../../services/search-analytics-service/migrations/001_search_analytics.sql:/docker-entrypoint-initdb.d/30-search-001.sql:ro
       - ../../services/search-analytics-service/migrations/002_search_indexes.sql:/docker-entrypoint-initdb.d/31-search-002.sql:ro
       - ./db/90-seed-categories.sql:/docker-entrypoint-initdb.d/90-seed-categories.sql:ro

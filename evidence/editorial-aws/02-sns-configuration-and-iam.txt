@@ -1,0 +1,142 @@
+SupportHub Group 12 - Phase 4 Editorial (Salma) - Task 2 (part 1)
+02 - SNS topic configuration and dedicated Editorial IAM (least privilege)
+==========================================================================
+
+TEST OBJECTIVE
+  Verify that the Editorial SNS topic is initialised in the ISOLATED Floci,
+  has the intended subscriber, and that the Editorial Service uses its own
+  dedicated IAM identity whose permissions are limited to sns:Publish on the
+  publication topic; every other SNS / cross-service operation must be denied.
+
+ENVIRONMENT
+  Date (UTC)  : 2026-11-26, first run 05:30:26Z, final run 05:33:56Z
+  Floci       : supporthub-iso-floci 2.5.0, http://localhost:4567,
+                FLOCI_SERVICES_IAM_ENFORCEMENT_ENABLED=true, persistent storage
+  Identities  : Floci admin test/test (read-only inspection only)
+                Editorial key from git-ignored infra/floci/.generated/isolated/editorial.aws.env
+                (loaded into shell variables, never printed; key compared to the worker's key
+                 by a 12-character sha256 prefix only)
+  Production  : main Floci on 4566 NOT used; no real AWS.
+
+COMMANDS
+  bash tests/integration/editorial-sns-iam-check.sh
+  The script runs (redacted forms):
+    aws --endpoint-url http://localhost:4567 sns list-topics | get-topic-attributes | list-subscriptions-by-topic   (admin)
+    aws ... iam get-user | list-user-policies | get-user-policy --policy-name SupportHubEditorialSNSPublisher      (admin)
+    AWS_ACCESS_KEY_ID=<editorial> AWS_SECRET_ACCESS_KEY=<redacted> aws ... sts get-caller-identity
+    docker exec supporthub-iso-editorial-publication-worker printenv EDITORIAL_PUBLICATION_TOPIC_ARN | SNS_ENDPOINT_URL
+    AWS_ACCESS_KEY_ID=<editorial> ... sns publish/create-topic/delete-topic/subscribe/set-topic-attributes/
+      get-topic-attributes/list-topics/list-subscriptions-by-topic, lambda invoke/update-function-configuration,
+      sqs send-message, iam list-users, secretsmanager get-secret-value (identity), s3api list-buckets
+  Expected: topic + exactly one Lambda subscription; policy = sns:Publish on the topic only;
+            every listed operation denied with an authorization error.
+
+--------------------------------------------------------------------------
+FIRST RUN (05:30:26Z) - 30 passed, 2 failed
+--------------------------------------------------------------------------
+  FAIL | SNS policy scope
+       -> TEST BUG, not a configuration defect: the AWS CLI output on Windows
+          contains  characters, so the exact-match grep failed. The printed
+          policy (below) is correct and identical to the repository file.
+          Fixed in the script (tr -d ' 
+').
+  FAIL | forged signature accepted
+       -> EMULATOR LIMITATION (not an application defect): Floci accepted
+          "sns publish" signed with the Editorial key id but a WRONG secret.
+          Floci IAM enforcement evaluates the policy of the identity named by
+          the access key id but does not verify the SigV4 signature.
+          Side effect (recorded honestly): this probe published the plain text
+          message "probe" to the isolated publication topic TWICE (05:30 and,
+          because a failed script edit re-ran the old script, again at ~05:33).
+          SNS delivered them to the subscribed Lambda, which rejects non-JSON
+          messages ("SNS message contains invalid JSON") and writes no receipt.
+          Lambda behaviour itself is Task 3 (PENDING) and was not analysed further.
+          The probe was changed to the side-effect-free "sts get-caller-identity"
+          and is now reported as LIMIT instead of PASS/FAIL.
+
+--------------------------------------------------------------------------
+FINAL RUN (05:33:56Z) - full transcript
+--------------------------------------------------------------------------
+Editorial SNS configuration + IAM check - 2026-11-26T05:33:56Z
+Floci: http://localhost:4567 version 2.5.0  (container supporthub-iso-floci, IAM enforcement: true)
+
+== 1. Topic initialisation (admin, read-only)
+     arn:aws:sns:us-east-1:000000000000:supporthub-editorial-publication-events
+     arn:aws:sns:us-east-1:000000000000:supporthub-identity-security-alerts
+PASS | topic supporthub-editorial-publication-events exists
+     "TopicArn": "arn:aws:sns:us-east-1:000000000000:supporthub-editorial-publication-events",
+     "DisplayName": "",
+     "SubscriptionsConfirmed": "1",
+     "SubscriptionsPending": "0",
+     "Owner": "000000000000"
+     subscription: lambda	arn:aws:lambda:us-east-1:000000000000:function:supporthub-editorial-publication-outcome
+PASS | intended subscriber: SNS -> Lambda supporthub-editorial-publication-outcome
+PASS | exactly one Lambda subscription (no duplicate deliveries)
+PASS | topic + subscription created idempotently by setup-supporthub.sh (create-topic, subscribe only if missing)
+
+== 2. Dedicated Editorial identity and policy
+     supporthub-editorial-service	arn:aws:iam::000000000000:user/supporthub-editorial-service
+     inline policies: SupportHubEditorialSNSPublisher	SupportHubEditorialSQSConsumer	SupportHubEditorialSecrets
+PASS | editorial user has exactly 3 inline policies (SQS consumer, SNS publisher, secrets)
+     SNS policy: {"Version":"2012-10-17","Statement":[{"Sid":"PublishPublicationEventsOnly","Effect":"Allow","Action":"sns:Publish","Resource":"arn:aws:sns:us-east-1:000000000000:supporthub-editorial-publication-events"}]}
+PASS | SNS policy = sns:Publish on the publication topic ONLY (no wildcard)
+PASS | no wildcard in SNS policy
+PASS | deployed SNS policy identical to infra/iam/editorial-sns-publish-policy.json
+PASS | dedicated Editorial key file present (git-ignored, values not printed)
+PASS | key file is git-ignored
+PASS | key authenticates as arn:...:user/supporthub-editorial-service
+PASS | publication worker runs with the dedicated Editorial key (sha256 prefix b15538ae8955 matches)
+PASS | worker EDITORIAL_PUBLICATION_TOPIC_ARN = publication topic
+PASS | worker SNS endpoint = isolated Floci (http://floci:4566 on supporthub-iso-net; no real AWS)
+
+== 3. Unauthorized SNS and cross-service operations are denied (Editorial key)
+PASS | DENY  sns:Publish to identity security-alerts topic  -> (AuthorizationError)
+PASS | DENY  sns:CreateTopic  -> (AuthorizationError)
+PASS | DENY  sns:DeleteTopic (non-existent probe ARN)  -> (AuthorizationError)
+PASS | DENY  sns:Subscribe to the publication topic  -> (AuthorizationError)
+PASS | DENY  sns:SetTopicAttributes on the publication topic  -> (AuthorizationError)
+PASS | DENY  sns:GetTopicAttributes  -> (AuthorizationError)
+PASS | DENY  sns:ListTopics  -> (AuthorizationError)
+PASS | DENY  sns:ListSubscriptionsByTopic  -> (AuthorizationError)
+PASS | DENY  lambda:InvokeFunction (subscriber is invoked by SNS, not Editorial)  -> (AccessDeniedException)
+PASS | DENY  lambda:UpdateFunctionConfiguration  -> (AccessDeniedException)
+PASS | DENY  sqs:SendMessage to article-events (producer role belongs to Article)  -> (AccessDeniedException)
+PASS | DENY  iam:ListUsers  -> (AccessDenied)
+PASS | DENY  secretsmanager:GetSecretValue supporthub/identity/runtime  -> (AccessDeniedException)
+PASS | DENY  s3:ListBuckets  -> (AccessDenied)
+LIMIT | EMULATOR LIMITATION: Floci accepted a request signed with a WRONG secret for the Editorial key id (resolved to user/supporthub-editorial-service); SigV4 signatures are not verified, only the key id. Real AWS rejects this with SignatureDoesNotMatch.
+PASS | DENY  sns:Publish with an unknown access key -> (InvalidClientTokenId)
+PASS | denied Subscribe did not add a subscription (still 1)
+PASS | denied CreateTopic created nothing
+
+ALLOW sns:Publish with the Editorial key is proven by the real application path (worker) in 03-sns-publication-notifications.txt
+Total: 31 passed, 0 failed, 1 emulator limitation(s)
+
+--------------------------------------------------------------------------
+RESULTS
+--------------------------------------------------------------------------
+  Topic initialisation in isolated Floci                         PASS
+  Intended subscriber (Lambda) - exactly one subscription        PASS
+  Dedicated Editorial IAM user, 3 scoped inline policies         PASS
+  SNS policy = sns:Publish on supporthub-editorial-publication-events only, no wildcard,
+    identical to infra/iam/editorial-sns-publish-policy.json      PASS
+  Worker uses the dedicated key, correct topic ARN, isolated endpoint  PASS
+  14 unauthorized SNS / Lambda / SQS / IAM / Secrets / S3 operations denied  PASS
+  Unknown access key rejected (InvalidClientTokenId)             PASS
+  Denied operations had no side effect                           PASS
+  Forged-secret signature rejection                              NOT VERIFIABLE (Floci limitation)
+  ALLOW sns:Publish with the Editorial key: proven by the real worker publications
+    in 03-sns-publication-notifications.txt (no synthetic probe publish needed)
+
+  Final: 31 PASS / 0 FAIL / 1 emulator limitation
+
+DEFECTS FOUND : none in the application or IAM configuration.
+CHANGES       : tests/integration/editorial-sns-iam-check.sh (new verification script only).
+RETEST        : final run above.
+
+REMAINING LIMITATIONS
+  - Floci 2.5.0 does not verify SigV4 signatures (only the key id), so
+    credential-forgery resistance can only be demonstrated on real AWS.
+  - The topic has no explicit resource policy (Floci default owner policy);
+    access control relies on the identity policy above.
+  - Lambda execution-role permissions are Task 3 (PENDING).

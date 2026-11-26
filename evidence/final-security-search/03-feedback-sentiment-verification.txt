@@ -1,0 +1,237 @@
+SupportHub Group 12 - Final security & search - Task 3
+03 - Feedback sentiment functionality (isolated, real application requests)
+==========================================================================
+
+TEST OBJECTIVE
+  Identify how feedback sentiment is implemented and verify it end to end with real requests:
+  positive/negative/neutral classification by the implemented model, persistence, analytics
+  API and dashboard values, authorization/roles, invalid input, duplicate protection, and
+  behaviour on analysis/storage failure including recovery.
+
+ENVIRONMENT
+  Date (UTC) 2026-11-26 13:04Z onwards ; ISOLATED stack only: proxy http://localhost:8188,
+  supporthub-iso-search (127.0.0.1:3208), supporthub-iso-postgres. Demo accounts (password from
+  the git-ignored file). Published, indexed isolated article 236; draft article 237.
+  Turnstile: the isolated Secrets Manager holds Cloudflare's documented always-pass TEST secret;
+  requests carry Cloudflare's documented dummy token; Cloudflare siteverify reachable
+  (probe from the Search container: HTTP 415 for an empty POST).
+
+IMPLEMENTATION (from the code)
+  Provider / model : npm package "sentiment" 5.0.2 (AFINN-165 word list), executed IN-PROCESS
+                     in services/search-analytics-service/services/sentimentService.js.
+                     No external API, no token, no cost. (A former Hugging Face provider survives
+                     only as sentimentService.js.huggingface-backup; HF_TOKEN in the runtime
+                     secret is unused.)
+  Label            : comparative score > 0 POSITIVE, < 0 NEGATIVE, = 0 NEUTRAL
+  Confidence       : heuristic |s| / (1 + |s|), 4 decimals (documented as not calibrated)
+  Submission       : POST /api/articles/:id/feedback {comment, turnstileToken}
+                     requireLogin -> rate limit "feedback" (20 per window, per IP) ->
+                     requireBrowserWrite (Origin + CSRF) -> Turnstile -> feedbackService.comment()
+  Trigger/storage  : INSERT article_feedback (sentiment_status 'pending') FIRST, then classify,
+                     then UPDATE status/label/confidence (update errors are logged, row kept).
+  Retrieval        : GET /api/analytics/overview (requireReviewer) -> sentimentBreakdown =
+                     completed rows grouped by label; frontend/js/analytics.js renders this array
+                     verbatim in the "Feedback Sentiment" dashboard section.
+  Env / credentials: none for sentiment; TURNSTILE_SECRET_KEY (runtime secret) for submission.
+  Duplicate rule   : required for helpfulness VOTES (SECURITY.md T5: one per user per article,
+                     UNIQUE + upsert). Written feedback has no uniqueness requirement.
+
+COMMAND
+  node tests/integration/search-sentiment-check.mjs
+
+--------------------------------------------------------------------------
+RUN 1 - full transcript
+--------------------------------------------------------------------------
+Feedback sentiment verification (isolated) - 2026-11-26T13:04:35.282Z
+model: sentiment 5.0.2 (AFINN-165, in-process, no external API/token); article 236
+PASS | target article is published and indexed in Search
+PASS | login author | HTTP 200 id=1
+PASS | login author2 | HTTP 200 id=2
+PASS | login editor | HTTP 200 id=3
+
+== 1. Positive / negative / neutral feedback through the application
+PASS | positive feedback accepted (201) with sentiment in the response | HTTP 201 {"status":"completed","label":"POSITIVE","confidence":0.4118}
+PASS | positive: label POSITIVE (model comparative score 0.7000)
+PASS | positive: confidence equals the implemented heuristic |s|/(1+|s|) = 0.4118 | 0.4118
+PASS | positive: persisted row (article, user, completed, label, confidence, text) | 236|1|completed|POSITIVE|0.4118|This guide is excellent and very helpful, thank you! (1795698276393)
+PASS | negative feedback accepted (201) with sentiment in the response | HTTP 201 {"status":"completed","label":"NEGATIVE","confidence":0.4375}
+PASS | negative: label NEGATIVE (model comparative score -0.7778)
+PASS | negative: confidence equals the implemented heuristic |s|/(1+|s|) = 0.4375 | 0.4375
+PASS | negative: persisted row (article, user, completed, label, confidence, text) | 236|1|completed|NEGATIVE|0.4375|Terrible instructions, the steps are wrong and confusing. (1795698276393)
+PASS | neutral feedback accepted (201) with sentiment in the response | HTTP 201 {"status":"completed","label":"NEUTRAL","confidence":0}
+PASS | neutral: label NEUTRAL (model comparative score 0.0000)
+PASS | neutral: confidence equals the implemented heuristic |s|/(1+|s|) = 0 | 0
+PASS | neutral: persisted row (article, user, completed, label, confidence, text) | 236|1|completed|NEUTRAL|0|The article describes the VPN settings page and the profile import menu. (1795698276393)
+PASS | exactly 3 new feedback rows
+
+== 2. Analytics API and dashboard values vs database
+     API sentimentBreakdown: [{"label":"NEGATIVE","count":4},{"label":"NEUTRAL","count":4},{"label":"POSITIVE","count":4}]
+     DB  completed by label: {"NEGATIVE":4,"NEUTRAL":4,"POSITIVE":4}
+PASS | editor GET /api/analytics/overview -> 200 with sentimentBreakdown | HTTP 200
+PASS | API breakdown equals the database counts (the dashboard renders this array verbatim)
+PASS | all three labels present after the new feedback
+
+== 3. Authorization and roles
+PASS | anonymous feedback -> 401 | HTTP 401
+PASS | feedback without CSRF token -> 403 | HTTP 403
+PASS | feedback from a foreign Origin -> 403 | HTTP 403
+PASS | feedback without Turnstile token -> 403 | HTTP 403 Turnstile token required
+PASS | author cannot read sentiment analytics -> 403 | HTTP 403
+PASS | anonymous cannot read sentiment analytics -> 401 | HTTP 401
+PASS | any logged-in reader role may submit feedback (author2) | HTTP 201
+PASS | feedback is attributed to the SESSION user, not a request field
+PASS | a userId in the body is ignored
+
+== 4. Invalid input
+PASS | empty comment -> 400 | HTTP 400 Invalid feedback text
+PASS | whitespace comment -> 400 | HTTP 400 Invalid feedback text
+PASS | comment > 1000 chars -> 400 | HTTP 400 Invalid feedback text
+PASS | non-string comment -> 400 | HTTP 400 feedback text must be text
+PASS | missing comment -> 400 | HTTP 400 feedback text must be text
+PASS | feedback on an unpublished (draft) article -> 404 | HTTP 404
+PASS | feedback on a non-existent article -> 404 | HTTP 404
+PASS | no rows stored for rejected requests
+PASS | HTML / SQL text stored verbatim as data (parameterised), table intact
+
+== 5. Duplicate protection
+PASS | helpfulness votes (required: SECURITY.md T5): repeated votes accepted as upsert | 200,200,200
+PASS | exactly ONE vote row for (article, user), holding the latest value
+PASS | UNIQUE(article_id,user_id) constraint present on helpfulness_votes
+     identical written feedback twice -> HTTP 201, 429; rows: 1
+     (written feedback has no uniqueness requirement - multiple comments per user are allowed by design;
+      abuse is limited by login, Turnstile and the 20-per-window rate limit)
+
+== 6. Persistence / failure handling (code-path facts, verified in the database)
+PASS | no feedback left 'pending' (insert-then-classify completed for every row) | completed=16
+
+Total: 42 passed, 0 failed
+
+  Note on section 5: the second identical written comment received HTTP 429 because this run had
+  used the per-IP feedback limit (20 per window) - written feedback has no uniqueness rule, the
+  rate limiter is the intended abuse control. Not a defect.
+
+--------------------------------------------------------------------------
+FAILURE HANDLING AND RECOVERY
+--------------------------------------------------------------------------
+  Provider unavailability: the model runs in-process (no network dependency), so a provider
+  outage cannot be triggered live without mocking; mocked results are not accepted as proof.
+  classify() catches any analysis exception and returns status 'unavailable' (code review).
+  Live provider-unavailable test: NOT VERIFIED (not triggerable without a mock).
+
+  Real fault instead (isolated DB only, no mock): a temporary NOT VALID check constraint
+  sentiment_store_fault_probe_238 makes the sentiment UPDATE fail for isolated article 238 only
+  (existing rows untouched; constraint removed in finally - verified).
+  Commands:
+    node tests/integration/search-sentiment-recovery-check.mjs fault
+    node tests/integration/search-sentiment-recovery-check.mjs recover     (>= 1 min later)
+    docker exec supporthub-iso-search node start.js scripts/reprocess-sentiment.js
+
+  BASELINE (code as found, 13:20:25Z) - transcript:
+    PASS | isolated article 238 is published and indexed
+    PASS | login author2
+    PASS | feedback accepted although storing the sentiment fails (201, saved:true) | HTTP 201 response sentiment={"status":"completed","label":"POSITIVE","confidence":0.4}
+    PASS | NO DATA LOSS: feedback text persisted, sentiment left 'pending' | pending|||Really helpful and clear article, great work! (fault 1795699226182)
+    FAIL | storage failure logged by the service      <- TEST BUG: the service DID log
+         "Feedback sentiment update failed: new row for relation "article_feedback" violates check
+          constraint "sentiment_store_fault_probe_238"" (docker logs -> stderr; the script read only
+          stdout). Script fixed (captures both streams); verified in the retest below.
+    note: the API response reported sentiment POSITIVE although it was not stored
+    analytics breakdown (completed only): NEGATIVE=5,NEUTRAL=6,POSITIVE=5  (pending row not counted)
+    PASS | fault constraint removed
+    recover phase on the unmodified container (13:21:37Z, row 17 older than 1 minute):
+    PASS | feedback 17 is still 'pending' (no automatic retry happened)
+    FAIL | a recovery job for pending/unavailable sentiment exists in the deployed service
+
+  DEFECTS FOUND
+    D-S1 (FIXED) Feedback whose sentiment could not be stored (update failure, process stop after
+         the insert, or 'unavailable' analysis) stayed 'pending'/'unavailable' forever and was
+         silently missing from the sentiment analytics. No retry or recovery existed. (Feedback text
+         itself was never lost.)
+    D-S2 (FIXED) In that case the API answered 201 with the computed label (e.g. POSITIVE) although
+         nothing was stored - the response did not reflect the persisted state.
+
+  CHANGES IMPLEMENTED
+    services/search-analytics-service/services/feedbackService.js
+      - reprocessSentiment(limit): re-classifies rows with status pending/unavailable older than
+        1 minute (in-flight requests untouched), bounded batch (max 500), UPDATE guarded by
+        "AND sentiment_status IN ('pending','unavailable')" so completed rows are never overwritten;
+        failures counted and logged, batch continues.
+      - comment(): if storing the sentiment fails, the response reports
+        {status:"pending",label:null,confidence:null}; the feedback row is kept.
+    services/search-analytics-service/scripts/reprocess-sentiment.js (new) - recovery job,
+      same pattern as scripts/sync-published.js; run in the container with
+      "node start.js scripts/reprocess-sentiment.js" (secrets loaded first). Idempotent.
+    services/search-analytics-service/tests/sentiment-reprocess.test.js (new) - 4 unit tests
+      (real model, bounded batch, failing update counted, comment() pending response).
+    tests/integration/search-sentiment-check.mjs, tests/integration/search-sentiment-recovery-check.mjs (new).
+    Search unit tests: npm test -> tests 107, pass 107, fail 0.
+    Isolated deployment: docker compose ... build search ; up -d --no-deps --no-build search.
+
+  RETESTS (fix deployed)
+    ### RETEST recover phase (fix deployed)
+    Sentiment failure/recovery check (recover) - 2026-11-26T13:22:37.319Z
+    PASS | feedback 17 is still 'pending' (no automatic retry happened) | pending|||Really helpful and clear article, great work! (fau
+    PASS | a recovery job for pending/unavailable sentiment exists in the deployed service
+         docker exec supporthub-iso-search node start.js scripts/reprocess-sentiment.js -> Sentiment reprocess: {"checked":1,"completed":1,"unavailable":0,"failed":0}
+    PASS | recovery job completed the stuck row (completed >= 1, failed 0) | {"checked":1,"completed":1,"unavailable":0,"failed":0}
+    PASS | row now completed with a POSITIVE label and confidence; text unchanged | completed|POSITIVE|0.4|Really helpful and clear article, great work! (fault 1795699226182)
+         analytics breakdown before: NEGATIVE=5,NEUTRAL=6,POSITIVE=5  after: NEGATIVE=5,NEUTRAL=6,POSITIVE=6
+    PASS | recovered sentiment now counted in analytics (POSITIVE +1)
+    PASS | second run is a no-op (idempotent) | {"checked":0,"completed":0,"unavailable":0,"failed":0}
+    PASS | no pending/unavailable rows remain
+    
+    Total: 7 passed, 0 failed
+    ### RETEST fault phase (fix deployed)
+    Sentiment failure/recovery check (fault) - 2026-11-26T13:22:51.429Z
+    PASS | isolated article 238 is published and indexed
+    PASS | login author2
+         add fault: ALTER TABLE
+    PASS | feedback accepted although storing the sentiment fails (201, saved:true) | HTTP 201 response sentiment={"status":"pending","label":null,"confidence":null}
+    PASS | NO DATA LOSS: feedback text persisted, sentiment left 'pending' | pending|||Really helpful and clear article, great work! (fault 1795699372551)
+    PASS | storage failure logged by the service | Feedback sentiment update failed: new row for relation "article_feedback" violates check constraint "sentiment_store_fault_probe_238"
+         note: the API response reported sentiment null although it was not stored
+         analytics breakdown (completed only): NEGATIVE=5,NEUTRAL=6,POSITIVE=6  (pending row not counted)
+         remove fault: ALTER TABLE
+    PASS | fault constraint removed
+         STUCK_FEEDBACK_ID=18
+    
+    Total: 6 passed, 0 failed
+    ### RETEST recover phase 2 (fix deployed)
+    Sentiment failure/recovery check (recover) - 2026-11-26T13:23:58.992Z
+    PASS | feedback 18 is still 'pending' (no automatic retry happened) | pending|||Really helpful and clear article, great work! (fau
+    PASS | a recovery job for pending/unavailable sentiment exists in the deployed service
+         docker exec supporthub-iso-search node start.js scripts/reprocess-sentiment.js -> Sentiment reprocess: {"checked":1,"completed":1,"unavailable":0,"failed":0}
+    PASS | recovery job completed the stuck row (completed >= 1, failed 0) | {"checked":1,"completed":1,"unavailable":0,"failed":0}
+    PASS | row now completed with a POSITIVE label and confidence; text unchanged | completed|POSITIVE|0.4|Really helpful and clear article, great work! (fault 1795699372551)
+         analytics breakdown before: NEGATIVE=5,NEUTRAL=6,POSITIVE=6  after: NEGATIVE=5,NEUTRAL=6,POSITIVE=7
+    PASS | recovered sentiment now counted in analytics (POSITIVE +1)
+    PASS | second run is a no-op (idempotent) | {"checked":0,"completed":0,"unavailable":0,"failed":0}
+    PASS | no pending/unavailable rows remain
+    
+    Total: 7 passed, 0 failed
+
+--------------------------------------------------------------------------
+RESULTS
+--------------------------------------------------------------------------
+  Positive / negative / neutral classification by the implemented model   PASS (3 x 4 checks)
+  Persistence (article, session user, status, label, confidence, text)     PASS
+  Analytics API sentimentBreakdown == database == dashboard source         PASS
+  Unauthorized / CSRF / Origin / Turnstile / role checks                   PASS (9)
+  Invalid and empty feedback, unpublished/non-existent article, SQL/HTML   PASS (9)
+  Duplicate protection where required (votes: one row per user/article)   PASS (3)
+  No feedback data loss when the sentiment cannot be stored                PASS
+  Recovery of pending sentiment                                            FAIL in baseline (D-S1) -> FIXED, retest PASS
+  Response reflects the stored state                                       FAIL in baseline (D-S2) -> FIXED, retest PASS
+  Live provider-unavailable scenario                                       NOT VERIFIED (in-process model; no mock used)
+  Totals: run 1 42 PASS / 0 FAIL ; baseline fault+recover 6 PASS / 2 FAIL (1 test bug, 1 defect) ;
+          retests 7 + 6 + 7 = 20 PASS / 0 FAIL ; 1 NOT VERIFIED.   STATUS: COMPLETED
+
+REMAINING LIMITATIONS / MANUAL ACTIONS
+  - The recovery job is run manually or by a scheduler (none configured), like sync-published.js.
+    On Vercel there is no long-running process; schedule it (e.g. Vercel Cron calling a protected
+    endpoint) only with your approval.
+  - Sentiment is a word-list heuristic (AFINN-165): no sarcasm/negation context; confidence is
+    not a calibrated probability (documented in the code and ANALYTICS.md).
+  - Written feedback can be submitted repeatedly by the same user (rate-limited); add a rule only
+    if the team requires it.
+  - Production sentiment was not exercised (would write production rows).

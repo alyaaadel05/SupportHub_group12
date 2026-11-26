@@ -1,0 +1,16 @@
+// Copy to wrangler.jsonc (git-ignored) and fill in the VPC Service id returned by:
+//   npx wrangler vpc service create supporthub-floci --type http \
+//     --tunnel-id <TUNNEL_ID> --hostname floci --http-port 4566
+// Secrets (never in this file):
+//   npx wrangler secret put GATEWAY_CLIENT_ID
+//   npx wrangler secret put GATEWAY_CLIENT_SECRET
+{
+  "name": "supporthub-floci-gateway",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": true,
+  "vpc_services": [
+    { "binding": "FLOCI", "service_id": "<VPC_SERVICE_ID>", "remote": true }
+  ],
+  "vars": { "FLOCI_HOST": "floci", "FLOCI_PORT": "4566" }
+}

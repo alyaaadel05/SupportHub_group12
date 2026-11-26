@@ -1,0 +1,29 @@
+8a9
+> subscription arn:aws:sns:us-east-1:000000000000:supporthub-editorial-publication-events	lambda	arn:aws:lambda:us-east-1:000000000000:function:supporthub-editorial-publication-outcome
+9a11
+> secret supporthub/article/database
+10a13,15
+> secret supporthub/ecs/article-worker-credentials
+> secret supporthub/ecs/editorial-worker-credentials
+> secret supporthub/editorial/database
+11a17
+> secret supporthub/shared/service-hmac
+18,19c24,25
+< user supporthub-prod-article-publisher | policies=ProductionArticlePublishOnly | keys=d778c26ce507,
+< user supporthub-prod-editorial-consumer | policies=ProductionEditorialConsumeOnly | keys=ecfe1d404294,
+---
+> user supporthub-prod-article-publisher | policies=ArticleWorkerSecrets,ProductionArticlePublishOnly,ProductionArticleSqsPublish | keys=d778c26ce507,
+> user supporthub-prod-editorial-consumer | policies=EditorialSnsPublish,EditorialWorkerSecrets,ProductionEditorialConsumeOnly,ProductionEditorialSqsConsume | keys=ecfe1d404294,
+20a27,30
+> role supporthub-article-worker-task
+> role supporthub-ecs-execution
+> role supporthub-editorial-publication-outcome-role
+> role supporthub-editorial-worker-task
+21a32
+> bucket awslambda-us-east-1-tasks | 1/465924
+27,28c38,39
+< lambdas: 
+< ecs clusters: 
+---
+> lambdas: supporthub-editorial-publication-outcome
+> ecs clusters: arn:aws:ecs:us-east-1:000000000000:cluster/supporthub-workers

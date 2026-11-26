@@ -1,0 +1,123 @@
+SupportHub Group 12 - Final security & search requirements - FINAL SUMMARY
+==========================================================================
+Date (UTC) : 2026-11-26 12:45-13:25Z
+Branch     : integration/group12-final (not switched; nothing committed, pushed, merged or deployed)
+Functional and disruptive tests: ISOLATED stack only (supporthub-iso-*, Floci 127.0.0.1:4567).
+Production: read-only checks only (health GETs, docker inspect, read-only SELECTs as restricted
+roles inside READ ONLY transactions). No production container restarted, no production or
+development database record modified, no Vercel/Cloudflare change, no credential printed or
+regenerated, no real AWS, Floci not exposed. Editorial phase changes and evidence preserved.
+Changes made with Claude assistance (Claude Code); uncommitted for your review.
+
+--------------------------------------------------------------------------
+STATUS
+--------------------------------------------------------------------------
+  1. Vercel services & Docker worker configuration ...... PARTIAL    (01)
+  2. S3 analytics CSV export ............................. COMPLETED  (02) - 1 emulator limitation, 1 manual apply
+  3. Feedback sentiment .................................. COMPLETED  (03)
+  4. Article 21 in the backend search index .............. COMPLETED  (04)
+
+--------------------------------------------------------------------------
+RESULTS
+--------------------------------------------------------------------------
+  1  11 PASS / 0 FAIL / 3 NOT VERIFIED
+     PASS: intended per-service config (restricted role, production pooled endpoint, verify-full
+     TLS + channel binding, no owner) ; 4/4 deployed health endpoints ; no neondb_owner session in
+     production after exercising all deployments ; Identity deployment connected as
+     supporthub_identity_app (DB-side) ; 2/2 production workers byte-identical (hash) to the
+     prepared Vercel values, restarts 0.
+     NOT VERIFIED: the values stored in the Vercel projects (Vercel CLI use was blocked by the
+     session permission policy) ; role of the Article/Editorial/Search deployments proven only
+     indirectly ; which editorial origin Cloudflare Pages uses.
+     FINDING F1: old deployment https://supporthub-editorial-service.vercel.app -> health 500
+     (cannot reach the DB; possibly an outdated/revoked credential).
+  2  Bucket privacy config 9 PASS ; export-unavailable baseline 5 PASS / 2 FAIL -> retest 7/7 PASS ;
+     unsigned S3 GET still 200 in Floci = EMULATOR LIMITATION (not claimed as enforced) ;
+     exposure: 3 FAIL found -> fixed in the repository, apply pending (manual).
+  3  Live run 42/42 PASS ; failure baseline 6 PASS / 2 FAIL (1 test bug, 1 defect) ;
+     retests 20/20 PASS ; 1 NOT VERIFIED (in-process provider outage cannot be triggered without a mock).
+  4  11/11 PASS (source vs index identical by md5/length/category/published_at; timeline consistent).
+  Unit tests: Search & Analytics 107/107 PASS (99 existing + 8 new). Editorial 183/183 (previous phase, unchanged).
+
+--------------------------------------------------------------------------
+DEFECTS FOUND AND FIXED
+--------------------------------------------------------------------------
+  S1  Main Floci published on ALL host interfaces ("4566:4566"); Windows Firewall allows Docker
+      inbound from any address -> from the LAN/tailnet: Floci root via default test/test, secret
+      names, S3 objects (unsigned GET 200) and the production SQS queue were reachable.
+      Fix (repository): infra/floci/docker-compose.yml -> "127.0.0.1:4566:4566";
+      infra/floci/floci-queues.sh warns when Floci is published beyond loopback.
+      NOT applied to the running production Floci (would require recreating a production container).
+  S2  CSV export with an unreachable S3 endpoint (the Vercel situation) hung in SDK retries ->
+      generic 500 / proxy "502 Backend unavailable". Fix: S3 client connection 3 s / request 8 s
+      timeouts; storage errors -> 503 "Analytics export storage unavailable" (no internal details).
+  D-S1 Feedback whose sentiment could not be stored stayed 'pending' forever (missing from
+      analytics). Fix: reprocessSentiment() + scripts/reprocess-sentiment.js (idempotent).
+  D-S2 API reported a sentiment label that had not been stored. Fix: response reports 'pending'.
+
+--------------------------------------------------------------------------
+CREATED / MODIFIED FILES IN THIS ASSIGNMENT (uncommitted)
+--------------------------------------------------------------------------
+  Modified:
+    infra/floci/docker-compose.yml                                   (S1 loopback binding)
+    infra/floci/floci-queues.sh                                      (S1 exposure warning)
+    services/search-analytics-service/services/awsClients.js         (S2 timeouts)
+    services/search-analytics-service/services/exportService.js      (S2 503 mapping)
+    services/search-analytics-service/services/feedbackService.js    (D-S1, D-S2)
+    services/search-analytics-service/tests/s3-export.test.js        (+4 tests)
+  Created:
+    services/search-analytics-service/scripts/reprocess-sentiment.js
+    services/search-analytics-service/tests/sentiment-reprocess.test.js
+    tests/integration/search-export-unavailable-check.mjs
+    tests/integration/search-sentiment-check.mjs
+    tests/integration/search-sentiment-recovery-check.mjs
+    tests/integration/production-readonly-db-check.mjs                (strictly read-only tool)
+    evidence/final-security-search/01-vercel-and-docker-configuration.txt
+    evidence/final-security-search/02-s3-csv-export-security.txt
+    evidence/final-security-search/03-feedback-sentiment-verification.txt
+    evidence/final-security-search/04-article-21-backend-index.txt
+    evidence/final-security-search/FINAL_SUMMARY.txt
+  Preserved unchanged from the Editorial phase: 7 modified editorial/compose files, migration 008,
+  4 editorial integration tests, evidence/editorial-aws/.
+
+--------------------------------------------------------------------------
+SECURITY VERIFICATION
+--------------------------------------------------------------------------
+  Secret scan of all 35 changed/untracked paths (git-ignored .generated excluded):
+    regex scan (AWS keys, private keys, DB URLs with passwords, Neon tokens, session/cron/HMAC
+    secrets, bearer tokens, Turnstile test secret) -> no findings ;
+    comparison against the 5 private role-password/secret files (values never printed) -> 0 hits ;
+    gitleaks dir -> "no leaks found".
+  Production (13:24Z, read-only): production workers and main Floci running, restarts 0, started
+  03:35-03:36Z (before this work) ; 4/4 Vercel health 200 ; no production write performed.
+  Temporary test processes: none running (an orphaned verify-only floci-queues.sh run and its
+  aws.exe children were stopped during Task 2; verify-only mode changed nothing).
+
+--------------------------------------------------------------------------
+REMAINING LIMITATIONS
+--------------------------------------------------------------------------
+  - Floci 2.5.0 serves unsigned S3 GETs and accepts its default admin credentials; only real AWS
+    can demonstrate S3 request authentication.
+  - The deployed Vercel Search service cannot export CSV: Floci is local-only by design and no
+    real S3 exists; it now fails fast with a clear 503. Changing this needs an approved architecture.
+  - Sentiment is a word-list heuristic; the recovery job is not scheduled.
+  - Public production search/view were not re-called (they write analytics rows).
+
+--------------------------------------------------------------------------
+MANUAL ACTIONS FOR YOU
+--------------------------------------------------------------------------
+  1. Vercel dashboard (https://vercel.com/dashboard -> project -> Settings -> Environment
+     Variables -> Production): confirm the DATABASE_URL_POOLED user per project
+     (article/identity/editorial-group12[domain ...-group1]/search-group12 -> matching
+     supporthub_*_app), production ep-steep-mouse pooler host, sslmode=verify-full&channel_binding=require,
+     no neondb_owner; current Production deployment dated after 2026-11-26 04:22 UTC.
+  2. Cloudflare Pages -> supporthub-group12 -> Settings -> Environment variables: EDITORIAL_ORIGIN
+     must be https://supporthub-editorial-service-group1.vercel.app; decide what to do with the
+     stale project behind https://supporthub-editorial-service.vercel.app (health 500).
+  3. Maintenance window: recreate the main Floci with the loopback binding
+       docker compose -p floci -f infra/floci/docker-compose.yml up -d --no-deps floci
+     then bash infra/floci/start-production-workers.sh --verify-only, and confirm from another
+     device that <this-PC-IP>:4566 no longer answers. Optionally tighten the Windows Firewall rule
+     "com.docker.backend.exe" (Allow, any remote IP, Private+Public).
+  4. Optional: schedule scripts/reprocess-sentiment.js; approve a storage architecture if CSV
+     export must work on Vercel.

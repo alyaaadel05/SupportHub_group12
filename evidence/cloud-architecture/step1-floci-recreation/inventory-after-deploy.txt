@@ -1,0 +1,40 @@
+# Floci inventory http://127.0.0.1:4566 2026-11-26T16:07:52Z version=2.5.0
+## SQS (visible / in-flight / delayed, redrive)
+queue supporthub-article-events | 0|0|0|30|None
+queue supporthub-article-events-demo | 0|1|0|30|None
+queue supporthub-article-events-production | 0|0|0|60|{"deadLetterTargetArn":"arn:aws:sqs:us-east-1:000000000000:supporthub-article-events-production-dlq","maxReceiveCount":"5"}
+queue supporthub-article-events-production-dlq | 0|0|0|30|None
+## SNS topics and subscriptions
+topic arn:aws:sns:us-east-1:000000000000:supporthub-editorial-publication-events
+topic arn:aws:sns:us-east-1:000000000000:supporthub-identity-security-alerts
+subscription arn:aws:sns:us-east-1:000000000000:supporthub-editorial-publication-events	lambda	arn:aws:lambda:us-east-1:000000000000:function:supporthub-editorial-publication-outcome
+## Secrets Manager (names only)
+secret supporthub/article/database
+secret supporthub/article/runtime-config
+secret supporthub/ecs/article-worker-credentials
+secret supporthub/ecs/editorial-worker-credentials
+secret supporthub/editorial/database
+secret supporthub/identity/runtime
+secret supporthub/shared/service-hmac
+secret supporthub/shared/session
+## IAM users, inline policies, access key fingerprints
+user search-analytics-service | policies=SearchAnalyticsLeastPrivilege,SupportHubSearchSecrets | keys=
+user supporthub-article-service | policies=SupportHubArticleDemoSQSPublisher,SupportHubArticleS3Policy,SupportHubArticleSQSPublisher | keys=67a2f3a299b2,
+user supporthub-editorial-consumer | policies=SupportHubEditorialSQSConsumer | keys=8caa0653c604,
+user supporthub-identity-service | policies=SupportHubIdentitySNSPublisher,SupportHubIdentitySecrets | keys=c76d258f49d8,
+user supporthub-prod-article-publisher | policies=ArticleWorkerSecrets,ProductionArticlePublishOnly,ProductionArticleSqsPublish | keys=d778c26ce507,
+user supporthub-prod-editorial-consumer | policies=EditorialSnsPublish,EditorialWorkerSecrets,ProductionEditorialConsumeOnly,ProductionEditorialSqsConsume | keys=ecfe1d404294,
+## IAM roles
+role supporthub-article-worker-task
+role supporthub-ecs-execution
+role supporthub-editorial-publication-outcome-role
+role supporthub-editorial-worker-task
+## S3 buckets (object count / total bytes)
+bucket awslambda-us-east-1-tasks | 1/465924
+bucket supporthub-article-backups | 6/566
+bucket supporthub-search-analytics-exports | 1/0
+## DynamoDB
+table supporthub-search-counters | items=0
+## Lambda / ECS
+lambdas: supporthub-editorial-publication-outcome
+ecs clusters: arn:aws:ecs:us-east-1:000000000000:cluster/supporthub-workers

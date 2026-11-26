@@ -1,0 +1,69 @@
+SupportHub Group 12 - Instructor feedback - 03 Vercel <-> Floci communication
+==========================================================================
+Date (UTC) 2026-11-26 ; isolated verification ; nothing deployed.
+
+HOW THE PUBLIC VERCEL APIS REACH FLOCI (proposed, application side verified)
+  Vercel function --HTTPS--> Cloudflare edge (Access app floci.<domain>, Service Auth policy:
+  CF-Access-Client-Id / CF-Access-Client-Secret) --Cloudflare Tunnel (outbound from the VM)-->
+  cloudflared container --http--> floci:4566 on the VM's private Docker network.
+  No inbound port on the VM; Floci never published; unauthenticated requests stop at Cloudflare.
+  The SDK still signs every request with the component IAM key; Floci enforces the IAM policy.
+
+DIRECT AWS SDK PATHS (API -> Floci, need the tunnel)
+  Source            Destination         Operation (IAM principal)                            Function
+  Article API       S3 article-backups  PutObject/GetObject articles/* (supporthub-article-service)  version backup export/restore
+  Search API        DynamoDB counters   UpdateItem/Scan (search-analytics-service)            live counters
+  Search API        S3 analytics-exports PutObject/GetObject/List exports/*                   CSV export
+  Search API        CloudWatch          PutMetricData SupportHub/Search                       metrics
+  Identity API      SNS security-alerts Publish (supporthub-identity-service)                 security alerts
+  (Secrets Manager from Vercel: optional - Vercel uses environment variables.)
+INDIRECT PATHS (no Vercel -> Floci call; PostgreSQL outbox + ECS workers on the VM)
+  Article API -> Neon article_event_outbox -> article-outbox-worker -> SQS -> editorial-article-consumer -> Neon
+  Editorial API -> Neon editorial_publication_event_outbox -> publication worker -> SNS -> Lambda -> Neon receipts
+  Editorial API -> Article/Search APIs: HMAC-signed HTTPS (no Floci involved)
+  Consumer (ECS on the VM) -> Article API on Vercel: HMAC-signed HTTPS GET /internal/articles/:id
+
+CODE CHANGE (opt-in, no-op unless both variables are set)
+  services/{search-analytics,article,identity}-service/config/flociAccess.js (new) - adds the two
+  headers in the SDK "deserialize" step, i.e. AFTER SigV4 signing; wired into Search awsClients
+  (DynamoDB, CloudWatch, S3), Article s3Client, Identity securityAlerts SNS client.
+  Unit tests: search 110/110 (3 new: headers added, not in SignedHeaders, no-op), article 64/64, identity 32/32.
+
+ISOLATED NETWORK TEST (stand-in for Cloudflare Access + Tunnel)
+  infra/floci/remote/access-gate-sim.js (test-only gate, constant-time token check, strips headers)
+  bash tests/integration/floci-access-gate-check.sh
+  First run: FAIL "calls with token" - the client used the Search image built BEFORE the helper was
+  added (gate log: 9 DENY, 0 ALLOW). Image rebuilt (supporthub-int-search:local, isolated only) and re-run:
+PASS | client network supporthub-gate-sim-net created (--internal: no route to Floci or the internet)
+PASS | gate attached to supporthub-iso-net (Floci side) and supporthub-gate-sim-net (client side)
+== with the service-token headers (FLOCI_ACCESS_CLIENT_ID/SECRET set)
+  [token] OP dynamodb:Scan counters OK 200
+  [token] OP s3:ListObjectsV2 exports/ OK 200
+  [token] OP cloudwatch:PutMetricData OK 200
+PASS | DynamoDB, S3 and CloudWatch calls succeed through the gate with the token (Search IAM key)
+== without the headers
+  [none] OP dynamodb:Scan counters ERR 403 SyntaxError
+  [none] OP s3:ListObjectsV2 exports/ ERR 403 Error
+  [none] OP cloudwatch:PutMetricData ERR 403 SyntaxError
+PASS | all three calls rejected with 403 at the gate without the token
+== wrong secret
+  [wrong] OP dynamodb:Scan counters ERR 403 SyntaxError
+  [wrong] OP s3:ListObjectsV2 exports/ ERR 403 Error
+  [wrong] OP cloudwatch:PutMetricData ERR 403 SyntaxError
+PASS | wrong service-token secret rejected (403)
+== direct access to Floci from the client network
+  UNREACHABLE TimeoutError
+PASS | Floci itself is not reachable from the client network (only the gate is)
+== gate decisions
+        1 ALLOW GET /supporthub-search-analytics-exports/
+        2 ALLOW POST /
+        2 DENY GET /supporthub-search-analytics-exports/
+        4 DENY POST /
+Total: 6 passed, 0 failed
+
+RESULT: 6/6 PASS - the real Search code with its own IAM key reaches DynamoDB, S3 and CloudWatch
+only through the gate and only with the correct token; Floci itself unreachable from the client network.
+
+NOT VERIFIED (needs your authorization: VM + domain + Cloudflare Zero Trust)
+  - The real Cloudflare Tunnel/Access edge and a real Vercel deployment calling it.
+  - Vercel cold-start latency through the tunnel.

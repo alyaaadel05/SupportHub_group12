@@ -2,6 +2,10 @@
 
 const crypto = require("node:crypto");
 const defaultPool = require("../db/pool");
+const { HttpError } = require("./http");
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function createPublicationEventService({
   pool = defaultPool,
@@ -189,6 +193,48 @@ function createPublicationEventService({
     return rowCount;
   }
 
+  // Recovery for notifications whose automatic retries were exhausted
+  // ('failed'). The ORIGINAL event (same eventId and payload) is requeued
+  // with a fresh retry budget, so subscribers can still de-duplicate by
+  // eventId. Called through the cron-secret protected internal endpoint.
+  async function requeueFailed({ eventId, limit = 20 } = {}) {
+    if (
+      eventId !== undefined &&
+      eventId !== null &&
+      (typeof eventId !== "string" || !UUID_PATTERN.test(eventId))
+    ) {
+      throw new HttpError(400, "A valid eventId UUID is required");
+    }
+
+    const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 100));
+
+    const { rows } = await pool.query(
+      `UPDATE editorial_publication_event_outbox AS events
+       SET state = 'pending',
+           next_attempt_at = NOW(),
+           last_error = LEFT(
+             'Requeued after ' || events.attempts || ' failed attempts: ' ||
+             COALESCE(events.last_error, ''), 250),
+           attempts = 0
+       WHERE events.event_id IN (
+         SELECT event_id
+         FROM editorial_publication_event_outbox
+         WHERE state = 'failed'
+           AND ($1::uuid IS NULL OR event_id = $1::uuid)
+         ORDER BY created_at
+         LIMIT $2
+         FOR UPDATE SKIP LOCKED
+       )
+       RETURNING events.event_id`,
+      [eventId || null, safeLimit]
+    );
+
+    return {
+      requeued: rows.length,
+      eventIds: rows.map(row => row.event_id)
+    };
+  }
+
   async function runBatch(limit = 20) {
     const safeLimit = Math.max(
       1,
@@ -215,7 +261,8 @@ function createPublicationEventService({
     queuePublicationEvent,
     publishOne,
     runBatch,
-    recoverAbandoned
+    recoverAbandoned,
+    requeueFailed
   };
 }
 

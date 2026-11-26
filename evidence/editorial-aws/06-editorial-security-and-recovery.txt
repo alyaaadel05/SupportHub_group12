@@ -1,0 +1,121 @@
+SupportHub Group 12 - Phase 4 Editorial (Salma) - Tasks 1-3
+06 - Editorial security and recovery (Lambda IAM, restart persistence, failure recovery)
+==========================================================================
+
+TEST OBJECTIVE
+  Verify least-privilege IAM around the publication-outcome Lambda, receipt
+  persistence across isolated restarts, recovery of a notification that failed
+  while SNS was down (delivery to the Lambda subscriber), and safe handling of a
+  Lambda processing failure. Re-review and SNS security checks are in 01 / 02 / 03.
+
+ENVIRONMENT
+  Date (UTC) 2026-11-26 (resumed session); isolated stack only. Keys from the
+  git-ignored infra/floci/.generated/isolated/{article,search,editorial}.aws.env
+  (never printed). Bounded harness: tests/integration/editorial-lambda-check.mjs
+  (every child process has a hard timeout; outer `timeout` per phase).
+
+--------------------------------------------------------------------------
+1. LAMBDA IAM - command: node tests/integration/editorial-lambda-check.mjs iam
+--------------------------------------------------------------------------
+
+######## editorial-lambda-check phase=iam - 2026-11-26T12:34:11.080Z (token lambdacheck20261126t123411078z)
+PASS | Lambda role trust policy: only lambda.amazonaws.com may assume it | { "Version": "2012-10-17", "Statement": [ { "Effect": "Allow", "Principal": { "Service": "lambda.amazonaws.com" }, "Action": "sts:AssumeRole" } ] }
+PASS | Lambda role has a single inline policy LambdaOwnLogGroup | LambdaOwnLogGroup
+PASS | no managed policies attached to the Lambda role | (none)
+PASS | role policy = logs:CreateLogGroup/CreateLogStream/PutLogEvents on its OWN log group only | {"Version":"2012-10-17","Statement":[{"Sid":"WriteOwnLambdaLogGroupOnly","Effect":"Allow","Action":["logs:CreateLogGroup","logs:CreateLogStream","logs:PutLogEvents"],"Resource":["arn:aws:logs:us-east-1:000000000000:log-group:/aws/lambda/supporthub-editorial-pu
+PASS | DENY article key: lambda:InvokeFunction | (AccessDeniedException)
+PASS | DENY article key: lambda:GetFunctionConfiguration (would reveal env) | (AccessDeniedException)
+PASS | DENY article key: lambda:UpdateFunctionCode | (AccessDeniedException)
+PASS | DENY search key: lambda:InvokeFunction | (AccessDeniedException)
+PASS | DENY search key: lambda:GetFunctionConfiguration (would reveal env) | (AccessDeniedException)
+PASS | DENY search key: lambda:UpdateFunctionCode | (AccessDeniedException)
+PASS | DENY editorial key: lambda:InvokeFunction | (AccessDeniedException)
+PASS | DENY editorial key: lambda:GetFunctionConfiguration (would reveal env) | (AccessDeniedException)
+PASS | DENY editorial key: lambda:UpdateFunctionCode | (AccessDeniedException)
+PASS | DENY editorial key: sts:AssumeRole into the Lambda role | (AccessDenied)
+PASS | DENY editorial key: lambda:AddPermission | (AccessDeniedException)
+PASS | DENY article key: sns:Subscribe to the publication topic | (AuthorizationError)
+PASS | DENY search key: sns:Publish forged publication event | (AuthorizationError)
+PASS | topology unchanged after denied operations (1 subscription) | 1
+phase iam: 18 passed, 0 failed, 0 not verified
+
+--------------------------------------------------------------------------
+2. RESTART PERSISTENCE (details in 05 section 3)
+--------------------------------------------------------------------------
+PASS | receipts (115 rows) unchanged by count, latest timestamp and md5 digest after restarting supporthub-iso-postgres
+PASS | publication worker restart: next publication processed (attempts=1) and receipt written 0.2 s later
+PASS | [Task 1] open re-review flag persisted across an Editorial API restart (03 section C)
+
+--------------------------------------------------------------------------
+3. SNS OUTAGE -> FAILED -> REQUEUE -> LAMBDA RECEIPT (fresh event)
+--------------------------------------------------------------------------
+
+######## editorial-lambda-check phase=recover - 2026-11-26T12:36:33.558Z (token lambdacheck20261126t123633554z)
+PASS | fresh article 246 created, submitted via SQS and approved | queue after 4.1 s, approve HTTP 201
+     2026-11-26T12:36:42.410Z docker stop supporthub-iso-floci -> ok
+PASS | editor publishes article 246 through the application | HTTP 200 
+PASS | SNS unavailable: event persisted as 'failed' after 5 attempts | state=failed attempts=5 after 179.1 s last_error="getaddrinfo EAI_AGAIN floci"
+     2026-11-26T12:39:42.176Z docker start supporthub-iso-floci -> ok
+PASS | isolated Floci healthy after start | after 2.0 s
+PASS | no receipt while the event is failed
+PASS | authorized requeue of the failed event | HTTP 200 {"requeued":1,"eventIds":["05376df7-ff95-4787-886e-d48716126c4c"]}
+PASS | requeued event published by the worker | after 7.0 s attempts=1
+PASS | RECOVERED notification reached its subscriber: Lambda receipt written | after 0.3 s: 05376df7-ff95-4787-886e-d48716126c4c|246|editorial.publication.published|2026-11-26 12:39:53.781544+00
+PASS | receipt matches the ORIGINAL event (eventId, articleId)
+PASS | exactly one receipt
+     RECOVER_EVENT=05376df7-ff95-4787-886e-d48716126c4c RECOVER_ARTICLE=246
+phase recover: 10 passed, 0 failed, 0 not verified
+
+--------------------------------------------------------------------------
+4. LAMBDA PROCESSING FAILURE AND RECOVERY
+   Command: node tests/integration/editorial-lambda-check.mjs lambdafail
+   Fault injection (isolated DB only): temporary CHECK (article_id <> 247) NOT VALID on the receipts
+   table, so ONLY the Lambda write for the new article fails; existing rows untouched; removed in finally.
+--------------------------------------------------------------------------
+
+######## editorial-lambda-check phase=lambdafail - 2026-11-26T12:40:23.356Z (token lambdacheck20261126t124023352z)
+PASS | fresh article 247 created, submitted via SQS and approved | queue after 2.1 s, approve HTTP 201
+     2026-11-26T12:40:26.153Z ALTER TABLE editorial_publication_event_receipts ADD CONSTRAINT phase4_lambda_fail_probe_247 CHECK (article_id <> 247) NOT VALID -> ALTER TABLE
+ok
+PASS | editor publishes article 247 through the application | HTTP 200 
+PASS | event published to SNS while the Lambda's DB write is forced to fail | state=published
+PASS | Lambda invocation failed safely: no receipt, nothing partial written
+     Lambda error lines: 1
+       2026-11-26T12:40:27.573Z	018684c8-814b-44c9-ac2a-ac9602590056	ERROR	Invoke Error 	{"errorType":"error","errorMessage":"new row for relation \"editorial_publication_event_receipts\" violates check cons
+       [floci] 2026-11-26 12:40:27,582 INFO  [io.flo.aws.cor.com.doc.ContainerLogStreamer] [lambda:supporthub-editorial-publication-outcome] 2026-11-26T12:40:27.573Z	018684c8-814b-44c9-ac2a-ac9602590056	ERROR	Invoke
+     2026-11-26T12:41:00.011Z drop probe constraint -> ALTER TABLE
+ok
+PASS | platform retry of the failed async invocation produced the receipt after the fault was removed | after 32.3 s
+PASS | missing-receipt state detectable: published outbox event without receipt
+PASS | probe constraint removed (schema restored)
+phase lambdafail: 7 passed, 0 failed, 0 not verified
+  Timeline (event b1c011e1-d299-48cc-9651-30ad646e977e, article 247):
+    12:40:27.532Z outbox published to SNS
+    12:40:27.573Z Lambda invocation #1 -> ERROR "violates check constraint" (no row written)
+    12:41:00.011Z fault removed (constraint dropped)
+    12:41:27.618Z receipt written by the platform retry of the async invocation (60 s after #1)
+    Lambda error lines for the window: 1 (first attempt only); receipts for article 247: 1
+  Totals after all phases: 118 published outbox events / 118 receipts / 0 missing        PASS
+  Probe constraint count after the phase: 0 (schema restored)                            PASS
+
+--------------------------------------------------------------------------
+RESULTS (06)
+--------------------------------------------------------------------------
+  Lambda IAM (role trust, single scoped logs policy, 13 denied operations, topology intact)  18 PASS
+  Restart persistence                                                                        3 PASS
+  SNS outage -> failed -> requeue -> Lambda receipt (fresh event)                           10 PASS
+  Lambda processing failure -> safe failure -> platform retry -> single receipt               7 PASS
+  Totals: 38 PASS / 0 FAIL / 0 NOT VERIFIED
+  DEFECTS FOUND: none in this file. CHANGES: tests/integration/editorial-lambda-check.mjs (new).
+
+REMAINING LIMITATIONS
+  - Recovery from a Lambda failure relies on the platform's async retries (Floci retried once
+    after 60 s; AWS retries up to 2 times). No on-failure destination / DLQ is configured; if
+    every retry fails the receipt stays missing. The gap is detectable with
+      SELECT ... FROM editorial_publication_event_outbox o LEFT JOIN editorial_publication_event_receipts r
+      USING(event_id) WHERE o.state='published' AND r.event_id IS NULL
+    but there is no automated reconciliation (requeue only handles outbox state 'failed').
+  - The Lambda receives DATABASE_URL as a plain function environment variable (visible to anyone
+    with lambda:GetFunctionConfiguration; denied for all component keys above). On real AWS this
+    should come from Secrets Manager / KMS-encrypted env vars.
+  - Floci does not verify SigV4 signatures (see 02).

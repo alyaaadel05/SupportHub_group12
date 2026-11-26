@@ -4,13 +4,20 @@ services:
     image: floci/floci:latest
     container_name: supporthub-floci
     ports:
-      - "4566:4566"
+      # Loopback only. Floci accepts its default admin credentials and serves
+      # unsigned S3 reads, so it must never be reachable from the LAN/tailnet.
+      # Containers reach it as http://floci:4566 on the Docker network.
+      - "127.0.0.1:4566:4566"
     environment:
       FLOCI_STORAGE_MODE: persistent
       FLOCI_STORAGE_PERSISTENT_PATH: /app/data
       FLOCI_SERVICES_IAM_ENFORCEMENT_ENABLED: "true"
     volumes:
       - floci-data:/app/data
+      # ECS tasks (the three workers) and the Lambda run as sibling containers,
+      # so Floci needs the Docker socket. Floci itself stays loopback-only.
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
 
   article-service:
     build:

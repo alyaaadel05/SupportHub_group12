@@ -1,0 +1,143 @@
+SupportHub Group 12 - Phase 4 Editorial Service (Salma) - FINAL SUMMARY
+==========================================================================
+Date (UTC)   : 2026-11-26 (session 1 05:15-05:55Z; resumed session after laptop sleep 12:25-12:45Z)
+Branch       : integration/group12-final (not switched; nothing committed, pushed, merged or deployed)
+Environment  : ISOLATED stack only - supporthub-iso-* containers, Floci 2.5.0 on 127.0.0.1:4567
+               (IAM enforcement on), PostgreSQL container supporthub-iso-postgres, proxy :8188.
+               No Neon database, production container, Vercel, Cloudflare or real AWS was used
+               or modified. Article 21 / production articles untouched.
+Changes were made with Claude assistance (Claude Code) and are uncommitted for review.
+
+--------------------------------------------------------------------------
+TASK STATUS
+--------------------------------------------------------------------------
+  Task 1 - Outdated article re-review lifecycle ........ COMPLETED   (01)
+  Task 2 - SNS publication notifications ............... COMPLETED   (02, 03)
+  Task 3 - Lambda execution and persistent receipts .... COMPLETED   (04, 05, 06)
+
+--------------------------------------------------------------------------
+TEST RESULTS (final state; every run is in the evidence files)
+--------------------------------------------------------------------------
+  File  Run                                              PASS  FAIL  NOT VERIFIED / LIMIT
+  01    re-review baseline (code as found)                 59     6   -   (D1, D2 + 1 test expectation)
+  01    re-review retest after fixes                       65     0   -
+  --    Editorial unit tests (npm test, final)            183     0   -   (175 before + 8 new)
+  02    SNS config + IAM, first run                        30     2   -   (1 test bug, 1 emulator limit)
+  02    SNS config + IAM, final run                        31     0   1 LIMIT (Floci does not verify SigV4)
+  03    SNS notifications baseline                         41     4   -   (2 test bugs, 1 poll timing, D3)
+  03    recovery retest after fix                          10     1   -   (harness timeout; service verified via DB/log)
+  03    individual follow-up checks                         5     0   1 NV at the time -> resolved below
+  03    addendum: resumed read-only checks                  3     0   -
+  03/06 fresh recovered event -> Lambda receipt            10     0   -   (resolves the NOT VERIFIED item)
+  04    Lambda e2e via SNS (fresh event)                   10     0   -
+  04    invalid payloads via SNS                           10     0   -
+  05    duplicate SNS deliveries                            5     0   -
+  05    receipt persistence across isolated restarts        8     0   -
+  06    Lambda IAM                                         18     0   -
+  06    Lambda failure -> platform retry -> receipt         7     0   -
+
+  Totals of the latest runs (superseded baselines excluded):
+    PASS 406 = 65 (01) + 183 (unit) + 31 (02) + 41 + 10 + 5 + 3 (03) + 10 (recover)
+               + 10 + 10 (04) + 5 + 8 (05) + 18 + 7 (06)
+    FAIL lines still present in those runs: 5, none open - 2 test bugs (values verified),
+      1 poll timing (result verified post-hoc), 1 = defect D3 (fixed, retested PASS),
+      1 harness timeout (service result verified via DB and worker log)
+    Open FAILs: 0 | NOT VERIFIED: 0 | Emulator limitations: 1 (SigV4 not verified by Floci)
+  Final data state: 118 published publication events, 118 Lambda receipts, 0 missing.
+
+--------------------------------------------------------------------------
+DEFECTS FOUND AND FIXED
+--------------------------------------------------------------------------
+  D1  Duplicate outdated reports created duplicate parallel re-reviews (7 open flags for one
+      article). Fix: migration 008 (non-destructive dedupe + partial unique index
+      editorial_flags_one_open_per_article) and INSERT ... ON CONFLICT DO NOTHING; a repeat
+      report returns the existing open flag (HTTP 200, duplicate:true).               RETESTED PASS
+  D2  The author of an article (admin role) could resolve the re-review of their own article.
+      Fix: resolve() checks the author via Article Service, 403 for self re-review, fails
+      closed if Article Service is unavailable.                                       RETESTED PASS
+  D3  An SNS publication event whose retries were exhausted stayed 'failed' forever with no
+      recovery path. Fix: requeueFailed() + POST /internal/retry-publication-events
+      (cron-secret protected; original eventId/payload kept).                         RETESTED PASS
+  No Lambda or receipt defect was found; no Lambda code change was needed.
+
+--------------------------------------------------------------------------
+CREATED AND MODIFIED FILES (uncommitted)
+--------------------------------------------------------------------------
+  Modified:
+    infra/floci/docker-compose.supporthub.yml                       (mounts migration 008 for fresh local DBs)
+    services/editorial-service/controllers/flagController.js        (201 new / 200 duplicate)
+    services/editorial-service/server.js                            (POST /internal/retry-publication-events)
+    services/editorial-service/services/flagService.js              (D1, D2)
+    services/editorial-service/services/publicationEventService.js  (D3 requeueFailed)
+    services/editorial-service/tests/flagService.test.js            (3 adapted + 5 new tests)
+    services/editorial-service/tests/publicationEventService.test.js (3 new tests)
+  Created:
+    services/editorial-service/migrations/008_flag_one_open_per_article.sql
+    tests/integration/editorial-rereview-check.mjs
+    tests/integration/editorial-sns-iam-check.sh
+    tests/integration/editorial-sns-check.mjs
+    tests/integration/editorial-lambda-check.mjs
+    evidence/editorial-aws/01-outdated-article-rereview.txt
+    evidence/editorial-aws/02-sns-configuration-and-iam.txt
+    evidence/editorial-aws/03-sns-publication-notifications.txt
+    evidence/editorial-aws/04-lambda-execution.txt
+    evidence/editorial-aws/05-persistent-receipts.txt
+    evidence/editorial-aws/06-editorial-security-and-recovery.txt
+    evidence/editorial-aws/FINAL_SUMMARY.txt
+
+--------------------------------------------------------------------------
+IAM AND SECURITY
+--------------------------------------------------------------------------
+  Editorial IAM user: 3 scoped inline policies; SNS = sns:Publish on the publication topic
+  only; worker uses this dedicated key. 14 unauthorized SNS/Lambda/SQS/IAM/Secrets/S3
+  operations denied (02). Lambda role: trust lambda.amazonaws.com only, single policy for its
+  own log group; Lambda invoke/config/code/permission changes and role assumption denied for
+  the article, search and editorial keys (06). Re-review endpoints: 401/403/400/404/409 and
+  CSRF/Origin protection verified (01). Recovery endpoint: 401 without/wrong secret, 400 bad
+  id, not exposed through the proxy (03).
+  Secret scan of all 18 changed/new paths (the git-ignored .generated directory excluded):
+    regex scan (AWS keys, private keys, DB URLs with passwords, Neon tokens, cron/session
+    secrets, bearer tokens) -> no findings; gitleaks dir -> "no leaks found".
+  No credential was rotated, regenerated or printed.
+
+--------------------------------------------------------------------------
+EMULATOR LIMITATIONS AND REMAINING LIMITATIONS
+--------------------------------------------------------------------------
+  - Floci 2.5.0 does not verify SigV4 signatures (only the access key id). Two plain "probe"
+    messages were published to the isolated topic by that probe in session 1 (recorded in 02).
+  - Floci does not log SNS deliveries; subscriber delivery is evidenced by a temporary
+    verification-only SQS subscriber (removed) and by Lambda receipts.
+  - Lambda failure recovery relies on platform async retries (Floci retried once after 60 s);
+    no on-failure destination/DLQ and no automated reconciliation of published events without
+    a receipt (the gap is detectable by SQL, see 06).
+  - The Lambda gets DATABASE_URL as a plain environment variable (real AWS: Secrets Manager/KMS).
+  - Re-review keeps the article published and searchable (current Article state machine has no
+    published->outdated transition); duplicate reporters' reason text is not stored.
+  - The worker's SNS client has no explicit request timeout (not changed).
+  - Requeue of failed SNS events is an operator/scheduler call; no scheduler is configured.
+  - Migration 008 is applied ONLY to the isolated database. It must be applied (npm run
+    db:migrate with the documented Neon safety gate) BEFORE the new flagService.js is deployed
+    anywhere else - this is a manual step for the team.
+
+--------------------------------------------------------------------------
+PRODUCTION HEALTH (read-only, 2026-11-26 ~12:43Z)
+--------------------------------------------------------------------------
+  supporthub-article / identity / editorial (healthy) / floci (healthy) / workers: all Up 9 hours.
+  supporthub-prod-editorial-article-worker and supporthub-prod-article-outbox-worker:
+    restartCount 0, started 2026-11-26T03:35:10Z (before this work began), 0 error lines in 2 h.
+  Health: :3005 article ok, :3006 identity ok (database connected), :3007 editorial ok, main Floci :4566 2.5.0.
+  No production container was stopped, restarted or recreated.
+
+--------------------------------------------------------------------------
+FINAL STATE
+--------------------------------------------------------------------------
+  Isolated SNS topology restored: single subscription (Lambda). Temporary probe constraint removed.
+  No testing processes running (no aws/node/k6 processes). No background tasks.
+  git status: 7 modified files, 6 untracked paths (evidence/editorial-aws/ + 5 files) - see list above.
+
+ACTIONS FOR THE TEAM (manual)
+  1. Review and commit the changes listed above.
+  2. Apply migration 008 to Neon (dev, then production) with the documented safety gate before
+     deploying the new Editorial code.
+  3. Optionally configure a scheduler for /internal/retry-publication-events and decide on a
+     Lambda on-failure destination / receipt reconciliation.

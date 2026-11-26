@@ -1,0 +1,170 @@
+SupportHub Group 12 - Final security & search - Task 2
+02 - S3 analytics CSV export: unsigned-read issue, endpoint exposure, Vercel behaviour
+==========================================================================
+
+TEST OBJECTIVE
+  Resolve the one open item from evidence/search-aws (94/95: isolated Floci served an
+  unsigned direct S3 GET of a private export object), decide whether it is a project
+  defect or an emulator limitation, apply compensating controls without weakening
+  security, and explain/handle why the deployed Vercel Search service cannot export.
+  Previously verified checks (generation, S3 object, contents, authenticated download,
+  RBAC, IAM, byte-identical download) were NOT repeated.
+
+ENVIRONMENT
+  Date (UTC) 2026-11-26 12:50-13:05Z ; Windows 11 + Docker Desktop 29.9.3 ; Git Bash
+  Isolated : supporthub-iso-floci 2.5.0 (127.0.0.1:4567), supporthub-iso-search (127.0.0.1:3208),
+             proxy http://localhost:8188, editor demo account (password from git-ignored file)
+  Main Floci (used by the production workers): supporthub-floci 2.5.0, host port 4566
+             -> READ-ONLY calls only (no write, no restart, no recreate)
+  Host addresses: Tailscale 100.111.138.123, LAN 192.168.1.6 (+ virtual adapters)
+
+==========================================================================
+A. UNSIGNED S3 READ - re-check of the previously unresolved item
+==========================================================================
+  Commands (Floci admin, isolated, read-only):
+    aws --endpoint-url http://localhost:4567 s3api get-public-access-block --bucket supporthub-search-analytics-exports
+    aws ... s3api get-bucket-policy | get-bucket-acl | get-object-acl | head-object (exports/analytics-20261126T130104Z.csv)
+    curl http://127.0.0.1:4567/supporthub-search-analytics-exports/exports/analytics-20261126T130104Z.csv   (no signature)
+  Results:
+    Block Public Access: BlockPublicAcls/IgnorePublicAcls/BlockPublicPolicy/RestrictPublicBuckets = True x4   PASS
+    Bucket policy: none (NoSuchBucketPolicy) - nothing grants public access                                PASS
+    Bucket ACL and object ACL: CanonicalUser owner FULL_CONTROL only, no AllUsers/AuthenticatedUsers       PASS
+    Object encryption: AES256 (ServerSideEncryption set by exportService)                                  PASS
+    Search IAM: only s3:Put/Get/List under exports/ (verified earlier, evidence/search-aws/01)            PASS (not repeated)
+    Unsigned GET on loopback -> HTTP 200                                                                    FAIL - EMULATOR LIMITATION
+    Control: unsigned DynamoDB ListTables on the same Floci -> HTTP 403                                    (Floci authenticates other services)
+  Classification: EMULATOR LIMITATION (Floci 2.5.0 does not authenticate unsigned S3 requests on any
+    bucket; previously shown for article-backups too). Bucket, ACL, policy and IAM configuration are
+    correct; real AWS would return 403 AccessDenied. No application or bucket change can make Floci
+    enforce it. S3 authentication is NOT fully enforced in the emulator - this is not claimed.
+
+==========================================================================
+B. ENDPOINT EXPOSURE (compensating controls) - DEFECT FOUND
+==========================================================================
+  Commands (read-only):
+    docker inspect -f '{{json .HostConfig.PortBindings}}' supporthub-floci supporthub-iso-floci
+    for each host IPv4: curl http://<ip>:4566/_floci/health ; curl http://<ip>:4567/_floci/health
+    netsh advfirewall show allprofiles state ; netsh advfirewall firewall show rule name="com.docker.backend.exe" verbose
+    AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test aws --endpoint-url http://192.168.1.6:4566 \
+      sts get-caller-identity | s3api list-buckets | secretsmanager list-secrets (count of NAMES only) | sqs list-queues
+    curl http://192.168.1.6:4566/supporthub-article-backups/<one key>      (unsigned)
+  Results:
+    supporthub-iso-floci binding : {"4566/tcp":[{"HostIp":"127.0.0.1","HostPort":"4567"}]}           PASS
+    isolated Floci via LAN / Tailscale IP: no connection (HTTP 000)                                     PASS
+    supporthub-floci binding     : {"4566/tcp":[{"HostIp":"","HostPort":"4566"}]}  = ALL interfaces     FAIL
+    main Floci health via 100.111.138.123 (Tailscale), 192.168.1.6 (LAN) and 4 virtual adapters: HTTP 200  FAIL
+    Windows Firewall ON for all profiles, but inbound rule "com.docker.backend.exe" = Allow, TCP+UDP,
+      any port, RemoteIP Any, profiles Private+Public  -> published ports are reachable from LAN/tailnet  FAIL
+    Impact demonstrated read-only through the LAN address:
+      default emulator credentials test/test -> arn:aws:iam::000000000000:root
+      buckets visible: supporthub-article-backups, supporthub-search-analytics-exports
+      3 Secrets Manager secrets listable (names only were counted; no value read)
+      queues incl. supporthub-article-events-production (+ -dlq) - the queue the production Editorial
+      worker consumes into production Neon
+      unsigned GET of an article-backup object via the LAN address -> HTTP 200
+  DEFECT S1 (project configuration): infra/floci/docker-compose.yml published the main Floci as
+    "4566:4566" (all interfaces). Combined with the emulator's default root credentials and
+    unsigned S3 reads, any device on the LAN or tailnet could read S3 objects and secrets or inject
+    messages into the production event queue.
+
+  CHANGES IMPLEMENTED (repository only - the running container was NOT changed)
+    infra/floci/docker-compose.yml : ports "4566:4566" -> "127.0.0.1:4566:4566" (with explanation).
+      docker compose -p floci -f infra/floci/docker-compose.yml config --format json
+        -> floci ports [{host_ip: 127.0.0.1, target 4566, published 4566}]                            PASS
+      Containers keep using http://floci:4566 on the Docker network; host scripts use localhost:4566,
+      so nothing in the project depends on the non-loopback binding (repository grep: no LAN/Tailscale
+      references to port 4566).
+    infra/floci/floci-queues.sh : new exposure check after the port check - prints
+      "[WARN] ... publishes port N on non-loopback addresses ..." (exit code unchanged, so the
+      production startup script behaves as before) or "[PASS] ... bound to loopback only".
+      bash -n infra/floci/floci-queues.sh -> syntax ok                                               PASS
+      bash infra/floci/floci-queues.sh --env isolated --verify-only ->
+        "[PASS] supporthub-iso-floci bound to loopback only", "22 passed, 0 failed, 0 change(s)"     PASS
+      Read-only evaluation of the same inspect expression on supporthub-floci -> "[]" (no host IP)
+        -> the check would print the WARN for production                                             PASS
+      (Note: a second timing run of the slow script was stopped by me; the orphaned script process
+       and its aws.exe children were terminated. No resource was changed - verify-only mode.)
+
+  MANUAL ACTION REQUIRED (not done - would restart a production container)
+    In a planned maintenance window, recreate the main Floci with the loopback binding; data is kept
+    in the volume floci_floci-data:
+      docker compose -p floci -f infra/floci/docker-compose.yml up -d --no-deps floci
+    then: bash infra/floci/start-production-workers.sh --verify-only
+    and confirm from another device that http://<this-PC-LAN-or-Tailscale-IP>:4566 no longer answers.
+    Until then, the exposure above remains on the running production Floci.
+
+==========================================================================
+C. VERCEL DEPLOYMENT vs LOCAL EXPORT - DEFECT FOUND AND FIXED
+==========================================================================
+  Why the deployed Vercel Search & Analytics app cannot export:
+    services/search-analytics-service/services/awsClients.js points the SDK at AWS_ENDPOINT_URL.
+    Locally that is Floci (http://floci:4566 / localhost). Floci runs only on this PC (now meant to be
+    loopback-only); Vercel's serverless functions run on the public internet and cannot reach it, and
+    no real AWS S3 bucket exists (by design: no real AWS). If S3_EXPORT_BUCKET is unset on Vercel the
+    code already answers 503 "Analytics export not configured" (consistent with the earlier production
+    note "S3 analytics export not configured"). If it is set with an unreachable endpoint, the request
+    hung in SDK retries. Making the Vercel export work requires a public/real S3 endpoint, a tunnel or
+    an architecture change - NOT done (needs your approval).
+  Vercel environment values were NOT inspected (Vercel CLI use was blocked; see 01).
+
+  Baseline (isolated; supporthub-iso-floci stopped for ~20 s to simulate an unreachable endpoint)
+    Command: node tests/integration/search-export-unavailable-check.mjs
+    PASS | editor login (isolated) | HTTP 200
+    PASS | control: export works while Floci S3 is reachable | HTTP 201 analytics-20261126T125752Z.csv
+    FAIL | export with S3 unreachable -> 503 with a clear, safe message (not a generic 500) | HTTP 502 {"error":"Backend unavailable"}
+    PASS | no internal details (hostname / SDK error) leaked
+    FAIL | list exports with S3 unreachable -> 503 safe message | HTTP 502 {"error":"Backend unavailable"}
+    PASS | analytics overview (PostgreSQL) still works during the S3 outage | HTTP 200
+    PASS | recovery: export works again after S3 is back | HTTP 201 analytics-20261126T125822Z.csv
+    Total: 5 passed, 2 failed
+    Search log: "Search & Analytics API error: getaddrinfo EAI_AGAIN floci" (generic 500 after >10 s;
+    the 10 s proxy timeout turned it into "502 Backend unavailable", as if the whole service were down)
+
+  DEFECT S2: an unreachable/failed S3 endpoint produced a slow generic 500 (502 at the proxy) instead
+    of a clear, fast "export storage unavailable" answer - exactly the Vercel situation.
+
+  CHANGES IMPLEMENTED
+    services/search-analytics-service/services/awsClients.js
+      S3 client only: requestHandler { connectionTimeout: 3000, requestTimeout: 8000 } (maxAttempts 2
+      unchanged) - fails inside the 10 s proxy / serverless budget. DynamoDB/CloudWatch unchanged.
+    services/search-analytics-service/services/exportService.js
+      storage() wrapper for Put/List/Get: S3 errors -> HttpError(503, "Analytics export storage
+      unavailable"); NoSuchKey / 404 still -> 404; only error name and code are logged.
+    services/search-analytics-service/tests/s3-export.test.js - 4 new unit tests.
+    tests/integration/search-export-unavailable-check.mjs (new) - the check above.
+    Unit tests: npm test (Search) -> tests 103, pass 103, fail 0 (99 existing + 4 new).
+    Isolated deployment: docker compose ... build search ; up -d --no-deps --no-build search
+      (image supporthub-int-search:local is used only by supporthub-iso-search)
+      docker exec supporthub-iso-search grep -c "Analytics export storage unavailable" services/exportService.js -> 1
+
+  Retest (13:00:35Z)
+    PASS | editor login (isolated) | HTTP 200
+    PASS | control: export works while Floci S3 is reachable | HTTP 201 analytics-20261126T130037Z.csv
+    PASS | export with S3 unreachable -> 503 with a clear, safe message (not a generic 500) | HTTP 503 {"error":"Analytics export storage unavailable"}
+    PASS | no internal details (hostname / SDK error) leaked
+    PASS | list exports with S3 unreachable -> 503 safe message | HTTP 503 {"error":"Analytics export storage unavailable"}
+    PASS | analytics overview (PostgreSQL) still works during the S3 outage | HTTP 200
+    PASS | recovery: export works again after S3 is back | HTTP 201 analytics-20261126T130104Z.csv
+    Total: 7 passed, 0 failed
+    Search log: "Analytics export storage error: TimeoutError" / "upstream error: Analytics export storage unavailable"
+
+==========================================================================
+RESULTS
+==========================================================================
+  Local Docker + Floci CSV export (generation, S3 object, download)    WORKING (evidence/search-aws, control + recovery above)
+  Bucket privacy configuration (BPA, policy, ACLs, SSE, IAM)            PASS
+  Unsigned S3 GET rejected                                              FAIL - EMULATOR LIMITATION (not claimed as enforced)
+  Isolated Floci loopback-only                                          PASS
+  Main Floci exposure (S1)                                              FIXED IN REPO, NOT APPLIED to the running container (manual)
+  Export behaviour with unreachable S3 (S2)                             FIXED, retest 7/7 PASS
+  Public Vercel CSV export                                              NOT AVAILABLE BY ARCHITECTURE (no reachable S3; needs approval to change)
+  Totals: baseline 5 PASS / 2 FAIL; retest 7 PASS / 0 FAIL; config checks 9 PASS; 1 emulator limitation;
+          exposure 3 FAIL found -> fixed in repository (manual apply pending)
+
+REMAINING LIMITATIONS / MANUAL ACTIONS
+  1. Recreate the main Floci with the loopback binding in a maintenance window (command above).
+  2. Optionally restrict the Windows Firewall rule "com.docker.backend.exe" (currently Allow, any
+     remote IP, Private+Public) - defence in depth for every published Docker port (3005-3007 are also
+     published on all interfaces).
+  3. Floci 2.5.0 cannot enforce S3 request authentication; only real AWS can demonstrate the 403.
+  4. Vercel export needs an approved storage architecture (real S3 or a private reachable endpoint).

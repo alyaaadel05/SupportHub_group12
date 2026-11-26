@@ -1,0 +1,132 @@
+SupportHub Group 12 - Instructor feedback - 02 ECS on Floci (isolated verification)
+==========================================================================
+Date (UTC) 2026-11-26 13:33-14:08Z ; ISOLATED Floci 2.5.0 (supporthub-iso-floci, 127.0.0.1:4567,
+IAM enforcement on, Docker socket mounted). No production resource touched.
+
+A. CAPABILITY PROBES (throwaway cluster supporthub-ecs-probe, deleted afterwards)
+  RunTask node:22-alpine -> real container floci-aws-ecs-<task>-probe on supporthub-iso-net;
+    logs "ECS-PROBE start ... host 34f29c7316cd" = ECS runtimeId 34f29c73...            PASS (real execution)
+  ECS service desiredCount 1 + Secrets Manager "secrets" + healthCheck
+    -> container log "SVC start plain-env-ok secretInjected=true"                       PASS
+  docker kill of the service container at 13:35:10 -> desired/running 1/0 at 13:35:18,
+    1/1 with a NEW task at 13:35:26 (2 stopped tasks recorded)                           PASS (auto-recovery ~16 s)
+  taskRoleArn credentials: Floci injects AWS_ACCESS_KEY_ID=test..., AWS_SECRET_ACCESS_KEY,
+    AWS_SESSION_TOKEN, AWS_ENDPOINT_URL=http://localhost.floci.io:4566 (no credentials endpoint);
+    a task whose role allows only CloudWatch Logs could read a secret and list SNS topics
+                                                                                        EMULATOR LIMITATION
+    (task roles NOT enforced; executionRoleArn of a non-existent role also accepted)
+  portMappings containerPort 3000 -> hostPort 13999: reachable from host and Docker network,
+    but bound to 0.0.0.0 (all interfaces)                                               NOTE (API tasks must not publish)
+  Image architectures: floci/floci, node:22-alpine, lambda/nodejs:22 all publish amd64 + arm64.
+
+B. THE THREE WORKERS AS ECS SERVICES (real application images)
+  Files: infra/floci/ecs/task-definitions/{article-outbox-worker,editorial-article-consumer,
+         editorial-publication-worker}.json ; infra/floci/ecs/deploy-ecs-workers.sh ;
+         infra/iam/{ecs-execution-secrets-policy,article-worker-task-policy,editorial-worker-task-policy}.json
+  Compensating control for the task-role limitation: each task gets its OWN component IAM key from
+  Secrets Manager (supporthub/ecs/<component>-worker-credentials) via task-definition "secrets", and
+  AWS_SESSION_TOKEN is overridden with "" (the injected token must not accompany a long-term key).
+  Isolated compose workers stopped first (docker stop, not removed) so ECS is the only worker set.
+  Command: bash infra/floci/ecs/deploy-ecs-workers.sh --env isolated
+==> Secrets (component keys for the tasks; values never printed)
+  [PASS] secret supporthub/ecs/article-worker-credentials exists (reused)
+  [PASS] secret supporthub/ecs/editorial-worker-credentials exists (reused)
+  [PASS] secret supporthub/ecs/local-ca exists (public CA certificate of the local Postgres)
+==> IAM roles (scoped; enforced by real ECS, documented for Floci)
+  [PASS] role supporthub-ecs-execution policy SupportHubEcsReadTaskSecrets
+  [PASS] role supporthub-article-worker-task policy SupportHubArticleWorker
+  [PASS] role supporthub-editorial-worker-task policy SupportHubEditorialWorker
+==> Cluster and task definitions
+  [PASS] cluster supporthub-workers exists
+  [PASS] task definition supporthub-article-outbox-worker:1
+  [PASS] service article-outbox-worker created
+  [PASS] task definition supporthub-editorial-article-consumer:1
+  [PASS] service editorial-article-consumer created
+  [PASS] task definition supporthub-editorial-publication-worker:1
+  [PASS] service editorial-publication-worker created
+==> Waiting for running tasks (max 90 s)
+  [PASS] 3/3 ECS worker services running
+== ECS cluster supporthub-workers on http://localhost:4567
+  article-outbox-worker	ACTIVE	1	1	arn:aws:ecs:us-east-1:000000000000:task-definition/supporthub-article-outbox-worker:1
+  editorial-article-consumer	ACTIVE	1	1	arn:aws:ecs:us-east-1:000000000000:task-definition/supporthub-editorial-article-consumer:1
+  editorial-publication-worker	ACTIVE	1	1	arn:aws:ecs:us-east-1:000000000000:task-definition/supporthub-editorial-publication-worker:1
+container floci-aws-ecs-83ea41d6d3b34b379ec6710b47f4b902-editorial-publication-worker Up 28 seconds
+container floci-aws-ecs-2eb83cc397db4e59a1dc2f9ba88c1904-editorial-article-consumer Up 38 seconds
+container floci-aws-ecs-701e23af5d9a4d2f8df115c8d601e2b9-article-outbox-worker Up 48 seconds
+Summary: 14 passed, 0 failed
+
+  Verification of real execution and identity (docker logs / docker inspect, hashes only):
+    article-outbox-worker       "[secrets] supporthub/shared/database: loaded 1 key(s)", "Article SQS outbox scheduler started";
+                                effective AWS key = article component key (sha 60965087872a)                 PASS
+    editorial-article-consumer  service-hmac + database secrets loaded, "Editorial Article Event Consumer started";
+                                effective key = editorial component key (sha b15538ae8955)                    PASS
+    editorial-publication-worker database secret loaded, "Editorial publication event publisher started";
+                                effective key = editorial component key                                      PASS
+    AWS_SESSION_TOKEN after revision 2 = "" in all three                                                     PASS
+  Re-run of the deploy script (revision 3, per-component DB-secret override support): 14 PASS, idempotent.
+
+C. FULL LIFECYCLE WITH ONLY THE ECS WORKERS
+  node tests/integration/editorial-lambda-check.mjs e2e
+
+######## editorial-lambda-check phase=e2e - 2026-11-26T13:52:01.930Z (token lambdacheck20261126t135201929z)
+PASS | fresh article 248 created, submitted via SQS and approved | queue after 4.2 s, approve HTTP 201
+PASS | editor publishes article 248 through the application | HTTP 200 
+PASS | worker published the outbox event to SNS | state=published attempts=1 after 6.6 s
+PASS | SNS triggered the Lambda, which wrote a persistent receipt | after 0.1 s: 2e90d0f8-f0f1-4775-b924-cdef11382f69|248|editorial.publication.published|2026-11-26 13:52:12.639549+00
+PASS | receipt event_id = outbox eventId = payload eventId | 2e90d0f8-f0f1-4775-b924-cdef11382f69
+PASS | receipt article_id = published article = payload data.articleId | 248
+PASS | receipt event_type = payload eventType = editorial.publication.published
+PASS | receipt processed_at after occurredAt | 2026-11-26T13:52:07.371Z -> 2026-11-26 13:52:12.639549+00
+PASS | exactly one receipt for the event
+     payload: {"data":{"articleId":248,"publishedBy":3},"eventId":"2e90d0f8-f0f1-4775-b924-cdef11382f69","eventType":"editorial.publication.published","occurredAt":"2026-11-26T13:52:07.371Z"}
+     Lambda containers since publish: floci-aws-supporthub-editorial-publication-outcome-7606eabb
+       [floci] 2026-11-26 13:52:11,950 INFO  [io.flo.aws.cor.sto.PersistentStorage] Loaded 0 entries from /app/data/lambda-provisioned-concurrency.json
+       [floci] 2026-11-26 13:52:11,991 INFO  [io.flo.aws.ser.lam.lau.ImageCacheService] Image already present locally, skipping pull: public.ecr.aws/lambda/nodejs:22
+       [floci] 2026-11-26 13:52:12,371 INFO  [io.flo.aws.ser.clo.log.CloudWatchLogsService] Created log stream: /aws/lambda/supporthub-editorial-publication-outcome/2026/11/26/[$LATEST]7606eabb
+PASS | invocation was SNS-driven (no manual lambda invoke issued by this phase) | only the application publish was performed
+     E2E_EVENT=2e90d0f8-f0f1-4775-b924-cdef11382f69 E2E_ARTICLE=248
+phase e2e: 10 passed, 0 failed, 0 not verified
+
+  ECS worker logs for this run:
+    article-outbox-worker        Event published: 07a329d2-efbb-4347-a132-3153ca3e7c26
+    editorial-article-consumer   Article event acknowledged: processed
+    editorial-publication-worker Publication event batch: {"results":[{"status":"published","messageId":"7b89bc57-..."}]}
+                                                                                                    10/10 PASS
+
+D. ECS RECOVERY WITH THE REAL WORKERS
+  13:52:26 docker kill of the consumer and publication containers -> 13:52:38 both replaced
+  (new task ids), services 1/1; lifecycle through the replacements:
+
+######## editorial-lambda-check phase=e2e - 2026-11-26T13:53:04.210Z (token lambdacheck20261126t135304208z)
+PASS | fresh article 249 created, submitted via SQS and approved | queue after 4.1 s, approve HTTP 201
+PASS | editor publishes article 249 through the application | HTTP 200 
+PASS | worker published the outbox event to SNS | state=published attempts=1 after 4.5 s
+PASS | SNS triggered the Lambda, which wrote a persistent receipt | after 0.2 s: b21a8cbc-4497-4d35-b467-871a616b2577|249|editorial.publication.published|2026-11-26 13:53:11.927645+00
+PASS | receipt event_id = outbox eventId = payload eventId | b21a8cbc-4497-4d35-b467-871a616b2577
+PASS | receipt article_id = published article = payload data.articleId | 249
+PASS | receipt event_type = payload eventType = editorial.publication.published
+PASS | receipt processed_at after occurredAt | 2026-11-26T13:53:08.676Z -> 2026-11-26 13:53:11.927645+00
+PASS | exactly one receipt for the event
+     payload: {"data":{"articleId":249,"publishedBy":3},"eventId":"b21a8cbc-4497-4d35-b467-871a616b2577","eventType":"editorial.publication.published","occurredAt":"2026-11-26T13:53:08.676Z"}
+     Lambda containers since publish: floci-aws-supporthub-editorial-publication-outcome-7606eabb
+PASS | invocation was SNS-driven (no manual lambda invoke issued by this phase) | only the application publish was performed
+     E2E_EVENT=b21a8cbc-4497-4d35-b467-871a616b2577 E2E_ARTICLE=249
+phase e2e: 10 passed, 0 failed, 0 not verified
+
+                                                                                                    10/10 PASS
+
+E. FLOCI RESTART (VM-reboot analogue)
+  14:02:49 docker restart supporthub-iso-floci ; healthy at 14:07:21 (~4.5 min state replay)
+  14:07:27 0 ECS containers -> 14:07:46 3 new containers; services 1/1/1; all three workers logged
+  "... started" again                                                                              PASS (slow restart = limitation)
+
+RESULTS
+  Capability probes 4 PASS + 1 emulator limitation ; worker deployment 14/14 ; real execution and
+  component identity 4/4 ; lifecycle 10/10 ; recovery lifecycle 10/10 ; Floci restart recovery PASS.
+  Service discovery: workers reach Floci as "floci" and the isolated Article API as "article" through
+  Docker network DNS (Floci attaches tasks to its network). Cloud Map was NOT used/verified.
+LIMITATIONS
+  - Floci does not enforce ECS task/execution roles (compensated with per-component keys).
+  - ECS task output appears in Floci's own log and the container log, not in CloudWatch Logs.
+  - Floci restart took ~4.5 min in the isolated stack.
+  - Verified on Docker Desktop (Windows); the remote Linux VM run is pending your authorization.

@@ -1,0 +1,42 @@
+SupportHub Group 12 - Instructor feedback - 04 AWS services per student (audit)
+==========================================================================
+Only integrations with ACTUAL application interaction are counted. "Verified" = executed
+against Floci with the real application code (isolated stack unless stated). No AWS resource
+was added merely to raise the count. Production status: today production workers and main Floci
+run on a laptop; the Vercel APIs cannot reach any Floci yet (see 03).
+
+ALYAA (Article & Category, shared Identity) - 6 services
+  S3            Article API PutObject/GetObject version backups (articles/*), restricted IAM,
+                Delete denied                                   verified  evidence/final (S3 backup), search-aws/04 (bucket settings)
+  SQS           Article Outbox Worker SendMessage article.submitted; DLQ redrive  verified  editorial-aws/01, cloud-architecture/02
+  IAM           supporthub-article-service user, scoped policies; deny tests      verified  final/iam, security-automation
+  Secrets Mgr   DATABASE_URL / session / HMAC at start-up (names only logged)     verified  final/aws/aws-usage, cloud-architecture/02
+  ECS           Article Outbox Worker as ECS service, real container, recovery     verified  cloud-architecture/02 (NEW)
+  SNS           Identity security-alerts topic (Identity is shared; owned by Alyaa) present in code + topic; live alert
+                delivery not re-verified in this phase                             PARTIAL
+  Not claimed: CloudWatch for Article (no Article metrics/log integration exists).
+
+SALMA (Editorial) - 7 services
+  SQS           Editorial consumer Receive/Delete after commit, inbox idempotency  verified  editorial-aws/01, salma/*
+  SNS           Publication worker publishes events; retry + requeue of failed     verified  editorial-aws/02-03
+  Lambda        SNS-triggered publication-outcome, persistent receipts, retries    verified  editorial-aws/04-06
+  IAM           editorial user (SQS consume, SNS publish, secrets), Lambda role    verified  editorial-aws/02, 06
+  Secrets Mgr   service-hmac / database / CRON secret at start-up                  verified  editorial-aws, cloud-architecture/02
+  CloudWatch    Logs: /aws/lambda/supporthub-editorial-publication-outcome, 22 streams,
+                ERROR events for invalid payloads (aws logs filter-log-events)     verified  this phase (read-only query)
+  ECS           Editorial Article Consumer + Publication Worker as ECS services      verified  cloud-architecture/02 (NEW)
+
+NERMEEN (Search, Feedback & Analytics) - 5 services
+  DynamoDB      live counters UpdateItem/Scan, RBAC on API                          verified  search-aws/02
+  S3            CSV export Put/Get/List exports/*, fast 503 on unreachable S3       verified  search-aws/03-05, final-security-search/02
+  CloudWatch    PutMetricData SupportHub/Search (Searches, ZeroResultSearches, Latency, errors) verified  final/aws/aws-usage
+  IAM           search-analytics-service user, least privilege + deny tests         verified  search-aws/01
+  Secrets Mgr   TURNSTILE / database / session / HMAC                               verified  search-aws/01
+  Possible meaningful additions (NOT implemented): SQS-driven async sentiment reprocessing,
+  scheduled export via ECS task.
+
+SECURITY CONTROLS (all students): per-component IAM users with resource-scoped policies;
+Floci IAM enforcement on; deny tests recorded; secrets never in git; Vercel access to Floci
+only through Cloudflare Access service token (proposed, application side verified in 03).
+EMULATOR LIMITATIONS affecting the counts: Floci does not enforce ECS task roles (compensated),
+does not verify SigV4 signatures, serves unsigned S3 GETs, ignores cloudwatch:namespace conditions.

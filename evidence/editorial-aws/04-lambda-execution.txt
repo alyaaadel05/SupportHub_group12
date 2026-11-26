@@ -1,0 +1,108 @@
+SupportHub Group 12 - Phase 4 Editorial (Salma) - Task 3 (part 1)
+04 - Lambda execution through SNS (publication -> outbox -> worker -> SNS -> Lambda)
+==========================================================================
+
+TEST OBJECTIVE
+  Verify that the Editorial publication-outcome Lambda is configured in the
+  isolated Floci, is triggered by SNS from a real application publication (not
+  a manual invoke), processes the correct article / event and handles
+  duplicate and invalid payloads safely.
+
+ENVIRONMENT
+  Date (UTC)  : 2026-11-26 (resumed session)
+  Floci       : supporthub-iso-floci 2.5.0, http://localhost:4567, IAM enforcement on,
+                Lambda functions run as sibling containers (floci-aws-*) on supporthub-iso-net
+  Database    : supporthub-iso-postgres (receipts table editorial_publication_event_receipts)
+  All AWS CLI calls: --cli-connect-timeout 5 --cli-read-timeout 20, AWS_PAGER="", MSYS_NO_PATHCONV=1,
+                wrapped in `timeout`; docker calls wrapped in `timeout`.
+
+--------------------------------------------------------------------------
+1. CONFIGURATION (read-only)                                    saved incrementally
+--------------------------------------------------------------------------
+  aws lambda get-function-configuration --function-name supporthub-editorial-publication-outcome
+    Runtime nodejs22.x | Handler index.handler | State Active | Timeout 30
+    Role arn:aws:iam::000000000000:role/supporthub-editorial-publication-outcome-role
+    LastModified 2026-11-25T18:52:30Z | CodeSize 467170 | tag managed-by=setup-supporthub
+    Environment variable NAMES: DATABASE_URL, NODE_EXTRA_CA_CERTS   (values not printed)  PASS
+  Deployed code = repository code:
+    CodeSha256 x3rqKv7P9d76XbON9Y5cCVLf2LXdcxkmBdEGzaoqLUw=
+    sha256(infra/floci/.generated/isolated/publication-outcome.zip) = same value          PASS
+    index.js inside the zip byte-identical to services/editorial-service/lambda/publicationOutcome/index.js  PASS
+    zip root: index.js, ca.crt (+ node_modules/pg)
+  SNS subscription: protocol lambda, endpoint = function ARN, exactly one                 PASS
+  Event invoke config: none (Floci/AWS defaults; no on-failure destination / DLQ)         NOTE
+  Historical end-to-end result: 113 published events, 113 receipts, 0 missing             PASS
+
+--------------------------------------------------------------------------
+2. END-TO-END: application publish -> outbox -> worker -> SNS -> Lambda -> receipt
+   Command: node tests/integration/editorial-lambda-check.mjs e2e   (outer timeout 280 s)
+--------------------------------------------------------------------------
+
+######## editorial-lambda-check phase=e2e - 2026-11-26T12:31:28.923Z (token lambdacheck20261126t123128909z)
+PASS | fresh article 243 created, submitted via SQS and approved | queue after 2.2 s, approve HTTP 201
+PASS | editor publishes article 243 through the application | HTTP 200 
+PASS | worker published the outbox event to SNS | state=published attempts=1 after 4.8 s
+PASS | SNS triggered the Lambda, which wrote a persistent receipt | after 2.5 s: af7f25db-a2aa-41aa-8fba-9ad3c8520b20|243|editorial.publication.published|2026-11-26 12:31:38.036847+00
+PASS | receipt event_id = outbox eventId = payload eventId | af7f25db-a2aa-41aa-8fba-9ad3c8520b20
+PASS | receipt article_id = published article = payload data.articleId | 243
+PASS | receipt event_type = payload eventType = editorial.publication.published
+PASS | receipt processed_at after occurredAt | 2026-11-26T12:31:32.890Z -> 2026-11-26 12:31:38.036847+00
+PASS | exactly one receipt for the event
+     payload: {"data":{"articleId":243,"publishedBy":3},"eventId":"af7f25db-a2aa-41aa-8fba-9ad3c8520b20","eventType":"editorial.publication.published","occurredAt":"2026-11-26T12:31:32.890Z"}
+     Lambda containers since publish: floci-aws-supporthub-editorial-publication-outcome-e0944763
+       [floci] 2026-11-26 12:31:37,686 INFO  [io.flo.aws.ser.clo.log.CloudWatchLogsService] Created log stream: /aws/lambda/supporthub-editorial-publication-outcome/2026/11/26/[$LATEST]e0944763
+PASS | invocation was SNS-driven (no manual lambda invoke issued by this phase) | only the application publish was performed
+     E2E_EVENT=af7f25db-a2aa-41aa-8fba-9ad3c8520b20 E2E_ARTICLE=243
+phase e2e: 10 passed, 0 failed, 0 not verified
+  Note: the Lambda container floci-aws-...-e0944763 was cold-started by Floci on the SNS
+  delivery (new log stream at 12:31:37.686, receipt at 12:31:38.036). No manual invoke.
+
+--------------------------------------------------------------------------
+3. INVALID PAYLOADS DELIVERED THROUGH SNS (safe rejection, Lambda keeps working)
+   Command: node tests/integration/editorial-lambda-check.mjs invalid
+   (4 malformed messages published to the topic with Floci admin; then a real publication)
+--------------------------------------------------------------------------
+
+######## editorial-lambda-check phase=invalid - 2026-11-26T12:32:58.256Z (token lambdacheck20261126t123258253z)
+PASS | invalid payload published to SNS (non-JSON message) | MessageId 4787de0b-78bc-42b0-8e1d-d44b48f88216
+PASS | invalid payload published to SNS (unsupported eventType) | MessageId 62f45836-623b-4df3-b0a0-b02bec95cf17
+PASS | invalid payload published to SNS (invalid eventId) | MessageId 8ce977bc-7a39-4d4f-adbe-63526b40b41d
+PASS | invalid payload published to SNS (missing / invalid articleId) | MessageId 9dad29e9-f260-4916-a543-b446e2be5930
+PASS | no receipt created for any invalid payload | before=114 after=114
+PASS | no receipt for the crafted UUIDs
+PASS | receipts table intact after SQL-injection-style eventId
+     Lambda error lines since 2026-11-26T12:32:58.702Z: 4
+       2026-11-26T12:33:03.347Z	c92201ae-2f8e-4b80-9f87-10600298ef3d	ERROR	Invoke Error 	{"errorType":"Error","errorMessage":"SNS message contains invalid JSON","stack":["Error: SNS message contains invalid 
+       2026-11-26T12:33:07.973Z	cf76eb08-5441-480f-bc21-5e6657d0e502	ERROR	Invoke Error 	{"errorType":"Error","errorMessage":"Unsupported publication event type","stack":["Error: Unsupported publication even
+       2026-11-26T12:33:12.531Z	3c656fcc-1c7e-407a-876d-5ff411de747a	ERROR	Invoke Error 	{"errorType":"Error","errorMessage":"Invalid publication event ID","stack":["Error: Invalid publication event ID","   
+       2026-11-26T12:33:17.124Z	c9181585-8020-47a7-a94f-54c5c6fba342	ERROR	Invoke Error 	{"errorType":"Error","errorMessage":"Invalid publication event identifiers","stack":["Error: Invalid publication event
+PASS | fresh article 244 created, submitted via SQS and approved | queue after 6.2 s, approve HTTP 201
+PASS | editor publishes article 244 through the application | HTTP 200 
+PASS | Lambda keeps working: next valid publication still gets its receipt | after 0.2 s
+phase invalid: 10 passed, 0 failed, 0 not verified
+  The Lambda container log shows one SNS-driven invocation per malformed message
+  (distinct request ids), each rejected by the handler validation with no DB write.
+  Floci did not retry these failed async invocations within the observation window
+  (one error line per message).
+
+--------------------------------------------------------------------------
+4. FAILURE HANDLING (details in 06 sections 3-4)
+--------------------------------------------------------------------------
+  Lambda DB-write failure -> invocation error logged, no partial row, platform async retry
+  after 60 s wrote exactly one receipt                                                        PASS
+  Recovered notification after an SNS outage -> Lambda receipt 0.3 s after requeued publish   PASS
+
+--------------------------------------------------------------------------
+RESULTS (04)
+--------------------------------------------------------------------------
+  Configuration and deployed code identity                      PASS (read-only)
+  End-to-end SNS-triggered execution, fresh event               10 PASS
+  Invalid payloads via SNS, Lambda keeps working                10 PASS
+  Totals: 20 PASS / 0 FAIL / 0 NOT VERIFIED  (+ read-only configuration checks)
+  DEFECTS FOUND: none. No Lambda code change was needed.
+  CHANGES: tests/integration/editorial-lambda-check.mjs (new verification harness).
+
+REMAINING LIMITATIONS
+  - The handler writes no success log; successful executions are evidenced by receipts and the
+    Floci log-stream creation; failed executions are visible in the Lambda container log.
+  - No on-failure destination / DLQ for the async invocation (see 06).

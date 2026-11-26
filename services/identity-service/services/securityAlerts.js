@@ -26,13 +26,14 @@ async function publishSecurityAlert(event, options = {}) {
     const { SNSClient, PublishCommand } =
       require("@aws-sdk/client-sns");
 
-    const client = options.client || new SNSClient({
+    const { withFlociAccess } = require("../config/flociAccess");
+    const client = options.client || withFlociAccess(new SNSClient({
       region: process.env.AWS_REGION || "us-east-1",
       maxAttempts: 1,
       ...(process.env.AWS_ENDPOINT_URL
         ? { endpoint: process.env.AWS_ENDPOINT_URL }
         : {})
-    });
+    }));
 
     try {
       const response = await client.send(new PublishCommand({

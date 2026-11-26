@@ -1,0 +1,82 @@
+{
+  "family": "supporthub-article-outbox-worker",
+  "networkMode": "bridge",
+  "requiresCompatibilities": [
+    "EC2"
+  ],
+  "taskRoleArn": "arn:aws:iam::000000000000:role/supporthub-article-worker-task",
+  "executionRoleArn": "arn:aws:iam::000000000000:role/supporthub-ecs-execution",
+  "containerDefinitions": [
+    {
+      "name": "article-outbox-worker",
+      "image": "__ARTICLE_IMAGE__",
+      "essential": true,
+      "memory": 256,
+      "entryPoint": [
+        "sh",
+        "-c"
+      ],
+      "command": [
+        "if [ -n \"$LOCAL_CA_PEM\" ]; then printf '%s\\n' \"$LOCAL_CA_PEM\" > /tmp/ca.crt; export NODE_EXTRA_CA_CERTS=/tmp/ca.crt; fi; exec node start.js services/articleOutboxScheduler.js"
+      ],
+      "environment": [
+        {
+          "name": "AWS_REGION",
+          "value": "us-east-1"
+        },
+        {
+          "name": "AWS_SESSION_TOKEN",
+          "value": ""
+        },
+        {
+          "name": "AWS_ENDPOINT_URL",
+          "value": "http://floci:4566"
+        },
+        {
+          "name": "AWS_SECRETS_ENABLED",
+          "value": "true"
+        },
+        {
+          "name": "SECRETS_REQUIRED",
+          "value": "true"
+        },
+        {
+          "name": "SECRET_IDS",
+          "value": "supporthub/shared/database"
+        },
+        {
+          "name": "SQS_QUEUE_URL",
+          "value": "__ARTICLE_QUEUE_URL__"
+        },
+        {
+          "name": "NODE_ENV",
+          "value": "__NODE_ENV__"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "AWS_ACCESS_KEY_ID",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:000000000000:secret:supporthub/ecs/article-worker-credentials:AWS_ACCESS_KEY_ID::"
+        },
+        {
+          "name": "AWS_SECRET_ACCESS_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:000000000000:secret:supporthub/ecs/article-worker-credentials:AWS_SECRET_ACCESS_KEY::"
+        },
+        {
+          "name": "LOCAL_CA_PEM",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:000000000000:secret:supporthub/ecs/local-ca:LOCAL_CA_PEM::"
+        }
+      ],
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "pgrep -f articleOutboxScheduler.js > /dev/null || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 20
+      }
+    }
+  ]
+}

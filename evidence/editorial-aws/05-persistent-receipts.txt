@@ -1,0 +1,86 @@
+SupportHub Group 12 - Phase 4 Editorial (Salma) - Task 3 (part 2)
+05 - Persistent Lambda receipts: creation, retrieval, contents, duplicates, persistence
+==========================================================================
+
+TEST OBJECTIVE
+  Verify that every SNS publication event processed by the Lambda produces
+  exactly one persistent receipt in editorial_publication_event_receipts, that
+  receipts can be retrieved and match the original event, that duplicate
+  deliveries do not create duplicate receipts, and that receipts survive an
+  isolated database / worker restart.
+
+ENVIRONMENT
+  Date (UTC) 2026-11-26 (resumed session) ; isolated stack only (Floci :4567,
+  supporthub-iso-postgres). Receipt storage: table editorial_publication_event_receipts
+  (event_id UUID PRIMARY KEY, event_type, article_id, processed_at), migration 006.
+  Retrieval command:
+    docker exec supporthub-iso-postgres psql -U supporthub -d supporthub -tAc \
+      "SELECT event_id, article_id, event_type, processed_at FROM editorial_publication_event_receipts WHERE event_id='<uuid>'"
+
+--------------------------------------------------------------------------
+1. CREATION, RETRIEVAL AND CONTENT MATCH (from 04 section 2, fresh event)
+--------------------------------------------------------------------------
+  event af7f25db-a2aa-41aa-8fba-9ad3c8520b20, article 243
+  outbox payload : {"data":{"articleId":243,"publishedBy":3},"eventId":"af7f25db-...","eventType":"editorial.publication.published","occurredAt":"2026-11-26T12:31:32.890Z"}
+  receipt row    : af7f25db-...|243|editorial.publication.published|2026-11-26 12:31:38.036847+00
+  event_id, article_id, event_type equal the payload; processed_at after occurredAt   PASS
+  Historical coverage: 113 published outbox events, 113 receipts, 0 missing          PASS
+  Recovered event 35b3c114-... (article 242): receipt present (see 03 addendum)      PASS
+  Receipt does not store publishedBy / occurredAt; the full original event is
+  retrievable by joining on event_id with editorial_publication_event_outbox.payload.  NOTE
+
+--------------------------------------------------------------------------
+2. DUPLICATE DELIVERIES
+   Command: node tests/integration/editorial-lambda-check.mjs duplicate
+   (re-publishes the identical payload + message attributes of the latest event
+    twice to the topic with Floci admin = simulated SNS at-least-once redelivery)
+--------------------------------------------------------------------------
+
+######## editorial-lambda-check phase=duplicate - 2026-11-26T12:31:56.935Z (token lambdacheck20261126t123156932z)
+     latest event af7f25db-a2aa-41aa-8fba-9ad3c8520b20 (article 243); receipt before: af7f25db-a2aa-41aa-8fba-9ad3c8520b20|243|editorial.publication.published|2026-11-26 12:31:38.036847+00
+PASS | identical event (same eventId) re-published twice to SNS (simulated at-least-once redelivery) | SNS MessageIds 1eaaa509-b565-42dd-aa7a-950eda2c5a21 / 61dff2c5-d544-4464-8dd4-7cb17746e923
+PASS | duplicate deliveries did not create another receipt (count stays 1) | count=1
+PASS | original receipt unchanged (same processed_at) | af7f25db-a2aa-41aa-8fba-9ad3c8520b20|243|editorial.publication.published|2026-11-26 12:31:38.036847+00
+PASS | outbox row unchanged (published, not re-queued)
+PASS | receipts table has event_id as PRIMARY KEY (DB-level guard)
+phase duplicate: 5 passed, 0 failed, 0 not verified
+  Limitation: the Lambda writes no log lines, so the two duplicate invocations
+  themselves are not directly observable; SNS accepted both publishes (MessageIds
+  above) to a topic whose only subscriber is the Lambda. Idempotency is guaranteed
+  by INSERT ... ON CONFLICT (event_id) DO NOTHING on the primary key.
+
+--------------------------------------------------------------------------
+3. PERSISTENCE ACROSS ISOLATED RESTARTS
+   Command: node tests/integration/editorial-lambda-check.mjs restart
+   Restarted: supporthub-iso-postgres and supporthub-iso-editorial-publication-worker (isolated only)
+--------------------------------------------------------------------------
+
+######## editorial-lambda-check phase=restart - 2026-11-26T12:35:54.879Z (token lambdacheck20261126t123554876z)
+     receipts before restart: count|latest=115|2026-11-26 12:33:52.05247+00 digest=f5934937badf997b71022af058ed7fee
+     2026-11-26T12:35:56.734Z docker restart supporthub-iso-postgres -> ok
+PASS | isolated PostgreSQL healthy after restart | after 4.4 s
+     2026-11-26T12:36:01.839Z docker restart supporthub-iso-editorial-publication-worker -> ok
+PASS | all receipts persisted across the database restart (count + latest unchanged)
+PASS | receipt contents byte-identical after restart (md5 digest)
+PASS | recovered-event receipt (35b3c114...) still retrievable | 35b3c114-4834-47c8-8bbe-5ebb901f7ebe article=242
+PASS | fresh article 245 created, submitted via SQS and approved | queue after 4.1 s, approve HTTP 201
+PASS | editor publishes article 245 through the application | HTTP 200 
+PASS | worker publishes again after restarts | state=published attempts=1 last_error=""
+PASS | Lambda writes a receipt for the first event after the DB restart | after 0.2 s
+phase restart: 8 passed, 0 failed, 0 not verified
+
+--------------------------------------------------------------------------
+RESULTS (05)
+--------------------------------------------------------------------------
+  Creation / retrieval / contents match (fresh event 243, recovered 242, 246)   PASS
+  Duplicate SNS deliveries (same eventId twice)                                5 PASS
+  Persistence across isolated PostgreSQL + worker restart                     8 PASS
+  Final coverage: 118 published events / 118 receipts / 0 missing              PASS
+  Totals: 13 PASS / 0 FAIL / 0 NOT VERIFIED (+ content-match checks in 04 section 2)
+  DEFECTS FOUND: none. CHANGES: none to receipt code or schema.
+
+REMAINING LIMITATIONS
+  - Receipts store event_id, event_type, article_id, processed_at only; publishedBy and occurredAt
+    are retrieved by joining the outbox payload on event_id.
+  - Invocation of duplicate deliveries is not directly logged by the handler (idempotency is
+    enforced by the primary key + ON CONFLICT DO NOTHING).

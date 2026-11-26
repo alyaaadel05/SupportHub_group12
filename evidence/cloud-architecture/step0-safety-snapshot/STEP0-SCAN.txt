@@ -1,0 +1,7 @@
+SupportHub Group 12 - Step 0 safety snapshot (2026-11-26T16:13:45Z)
+Branch at scan time: integration/group12-final ; base commit c918c71
+Files scanned: 86 changed/untracked (git status --porcelain -uall); .env, .generated, key, password and archive files: none in the set (all git-ignored).
+gitleaks dir (scratch copy of exactly these files, --redact): no leaks found
+Exact-value comparison against 44 private values (Neon URLs, role passwords, HMAC, all worker/component AWS keys of isolated, rehearsal and production configs; values never printed): 0 hits
+Largest file: docs/architecture/supporthub_production_architecture.png (2.7 MB)
+Commit/push performed by the account owner (not by the assistant).

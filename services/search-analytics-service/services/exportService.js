@@ -9,6 +9,20 @@ const analytics = require("./analyticsService");
 const PREFIX = "exports/";
 const NAME_PATTERN = /^analytics-\d{8}T\d{6}Z\.csv$/;
 
+// S3 failures (endpoint unreachable, timeout, access denied, 5xx) become a
+// clear 503 instead of a generic 500 / proxy timeout. Only the error name and
+// code are logged - never the endpoint, credentials or request details.
+async function storage(operation) {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    if (error.name === "NoSuchKey" || error.$metadata?.httpStatusCode === 404) throw error;
+    console.error("Analytics export storage error:", error.name || "Error", error.code || error.$metadata?.httpStatusCode || "");
+    throw new HttpError(503, "Analytics export storage unavailable");
+  }
+}
+
 function bucket() {
   const name = process.env.S3_EXPORT_BUCKET;
   if (!name) throw new HttpError(503, "Analytics export not configured");
@@ -53,15 +67,17 @@ async function exportAnalytics(now = new Date()) {
   const overview = await analytics.overview();
   const csv = toCsv(overview, now.toISOString());
   const name = exportName(now);
-  await s3.send(new PutObjectCommand({
-    Bucket: bucket(), Key: PREFIX + name, Body: csv,
+  const target = bucket();
+  await storage(() => s3.send(new PutObjectCommand({
+    Bucket: target, Key: PREFIX + name, Body: csv,
     ContentType: "text/csv; charset=utf-8", ServerSideEncryption: "AES256"
-  }));
+  })));
   return { name, bucket: bucket(), key: PREFIX + name, bytes: Buffer.byteLength(csv), rows: csv.trim().split("\n").length - 1 };
 }
 
 async function listExports() {
-  const result = await s3.send(new ListObjectsV2Command({ Bucket: bucket(), Prefix: PREFIX, MaxKeys: 100 }));
+  const target = bucket();
+  const result = await storage(() => s3.send(new ListObjectsV2Command({ Bucket: target, Prefix: PREFIX, MaxKeys: 100 })));
   return (result.Contents || [])
     .map(o => ({ name: o.Key.slice(PREFIX.length), bytes: o.Size, lastModified: o.LastModified }))
     .filter(o => NAME_PATTERN.test(o.name))
@@ -70,9 +86,12 @@ async function listExports() {
 
 async function getExport(name) {
   if (!NAME_PATTERN.test(String(name || ""))) throw new HttpError(400, "Invalid export name");
+  const target = bucket();
   try {
-    const result = await s3.send(new GetObjectCommand({ Bucket: bucket(), Key: PREFIX + name }));
-    return await result.Body.transformToString();
+    return await storage(async () => {
+      const result = await s3.send(new GetObjectCommand({ Bucket: target, Key: PREFIX + name }));
+      return result.Body.transformToString();
+    });
   } catch (error) {
     if (error.name === "NoSuchKey" || error.$metadata?.httpStatusCode === 404)
       throw new HttpError(404, "Export not found");

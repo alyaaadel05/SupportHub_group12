@@ -1,0 +1,86 @@
+SupportHub Group 12 - 06 Unified architecture (instructor clarification)
+==========================================================================
+Date (UTC) 2026-11-26 ; hosting investigation (Oracle/Google) PAUSED on request; no account,
+no paid resource, no commit, no production change.
+
+TARGET (one consistent application)
+  Frontend : Cloudflare Pages (unchanged)            - only production frontend
+  APIs     : 4 Vercel projects (unchanged)           - ONLY production API deployment
+  Database : Neon production (restricted roles)      - unchanged
+  AWS layer: main Floci on the demo host, started by ONE script: infra/floci/start-supporthub.sh
+             (S3, SQS+DLQ, SNS, Lambda, DynamoDB, CloudWatch, Secrets Manager, IAM, ECS)
+  Workers  : the 3 background workers as ECS services in that Floci (cluster supporthub-workers)
+  Vercel -> Floci: Cloudflare Worker gateway on *.workers.dev + Workers VPC + cloudflared tunnel
+             (free on the existing Cloudflare account; no domain; no open port)
+  Local API containers (supporthub-article/identity/editorial :3005-3007, supporthub-iso-*):
+             isolated testing ONLY - not part of the production workflow.
+
+1. MASTER SCRIPT infra/floci/start-supporthub.sh (new; reuses verified scripts)
+   steps: private inputs -> Floci check/recreate (loopback + Docker socket, data volume kept) ->
+   remote-init-aws.sh (local mode) -> deploy-ecs-workers.sh --env production -> optional cloudflared.
+   Guards verified:
+     production without approval  -> "production changes need approval" (exit 3)            PASS
+     deploy-ecs-workers --env production without approval -> refused                         PASS
+     remote-init-aws.sh local mode without approval -> refused                                PASS
+     --status (read-only) on the REAL main Floci reports: published 0.0.0.0:4566, docker.sock 0,
+       cloudflared absent, legacy laptop workers running                                     PASS (accurate)
+   Rehearsal of the PRODUCTION code path against the ISOLATED Floci (isolated values only,
+   desiredCount 0, so no worker ran and nothing reached production):
+     AWS init 19/19 PASS (existing worker users supporthub-prod-article-publisher /
+     supporthub-prod-editorial-consumer reused, per-component DB secrets, Lambda, SNS->Lambda);
+     ECS 13/13 PASS (task definitions rev 5, three services ACTIVE 0/0).
+   Defect found and fixed: an existing supporthub/ecs/*-worker-credentials secret was reused even
+   if the key file had changed -> now compared by key id (in node, nothing printed) and updated
+   only when different. Verified: "exists and matches ... (reused)" ; isolated deploy 14/14.
+   Isolated stack restored afterwards (3 workers 1/1 with their own secrets).
+
+2. MAIN FLOCI FINDINGS (read-only inventory)
+   no Docker socket (ECS tasks and Lambda cannot run), published on 0.0.0.0:4566 (LAN/tailnet,
+   finding S1), no Lambda, no ECS cluster, no per-component DB secrets; topics/table/buckets and
+   the production queue/IAM users exist.
+   -> start-supporthub.sh --recreate-floci (needs approval) recreates it from
+      infra/floci/docker-compose.yml: 127.0.0.1:4566 + Docker socket, volume floci_floci-data kept.
+
+3. FRONTEND REQUESTS GO TO VERCEL (production, non-mutating probes via the Pages site)
+   frontend/js/config.js: API_URL "/api" (same-origin), API_ORIGINS null; localhost entries only
+   select Cloudflare's Turnstile TEST site key for local development.
+   curl -X <METHOD> https://supporthub-group12.pages.dev<path>  (no session):
+     GET    /api/auth/csrf                    identity  200  server=cloudflare  x-vercel-id present
+     GET    /api/categories                   article   200  production categories, x-vercel-id
+     GET    /api/editorial/flags              editorial 401  x-vercel-id
+     GET    /api/analytics/overview           search    401  x-vercel-id
+     POST   /api/articles                     article   401  x-vercel-id
+     PATCH  /api/articles/999999/publication  editorial 401  x-vercel-id
+     DELETE /api/articles/999999              article   401  x-vercel-id
+     POST   /api/articles/999999/votes        search    401  x-vercel-id
+     POST   /api/auth/logout                  identity  401  x-vercel-id
+   => every method/service is answered by Vercel behind Cloudflare; a local container cannot be
+      reached from Cloudflare's edge.                                                       9/9 PASS
+   Side effects: security events are console-only (no DB writes); the GET /api/auth/csrf probe
+   most likely created one anonymous production session row (as any page visit does; it expires).
+   NOT determinable without a login: which of the two editorial Vercel projects EDITORIAL_ORIGIN
+   points to (see final-security-search/01, finding F1).
+
+4. NOT YET VERIFIED (need your approvals / account actions)
+   8. Vercel -> Floci AWS access: needs tunnel token, wrangler login, gateway deploy and Vercel
+      environment variables (Article, Identity, Search) + redeploy.
+   9. Full submission/review/publication/search/analytics workflow on the official Vercel APIs
+      with ECS workers: needs the cutover (laptop worker containers -> ECS), which writes
+      production rows (the pending Article 21 publication event will be published once and its
+      Lambda receipt written).
+
+5. MUST FLOCI RUN DURING THE DEMONSTRATION?  YES.
+   Needs Floci (and the ECS workers):  submission -> SQS -> editorial review queue; SNS
+     publication event -> Lambda receipt; S3 version backups and CSV exports; DynamoDB live
+     counters; CloudWatch metrics; Identity SNS security alerts; Secrets Manager for the workers.
+   Works without Floci (Vercel + Neon only): login/registration, article CRUD, approve/publish of
+     already-queued reviews, search, feedback/sentiment, analytics overview. Events written while
+     Floci is down stay in the PostgreSQL outboxes and are delivered after it starts (durable).
+   Hosting limitation (free budget): the Floci host is a team laptop that must be switched on and
+     online for the demo; Workers VPC is free only while in beta (post-beta pricing not stated);
+     Floci on Windows took ~4.5 min to restart.
+
+6. DIAGRAM  docs/architecture/supporthub_production_architecture.{py,png,svg,pdf} re-rendered:
+   one unified deployment, ECS cluster with 3 workers, gateway Worker + Workers VPC + tunnel,
+   Floci host labelled "must run during the demo; started by infra/floci/start-supporthub.sh";
+   every arrow connects real components and states its function.

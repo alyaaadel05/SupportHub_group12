@@ -66,3 +66,33 @@ test("export fails safely with 503 when no bucket is configured", async () => {
   analytics.overview = async () => sample;
   await assert.rejects(() => exportsService.exportAnalytics(), { status: 503 });
 });
+// ---- export storage unreachable (e.g. deployment without a reachable S3 endpoint)
+
+test("export returns a clear 503 when S3 is unreachable (no internal details)", async () => {
+  process.env.S3_EXPORT_BUCKET = "supporthub-search-analytics-exports";
+  analytics.overview = async () => sample;
+  s3.send = async () => { const e = new Error("getaddrinfo EAI_AGAIN floci"); e.code = "EAI_AGAIN"; throw e; };
+  await assert.rejects(() => exportsService.exportAnalytics(), error =>
+    error.status === 503 && error.message === "Analytics export storage unavailable" && !/floci|EAI_AGAIN/.test(error.message));
+});
+
+test("listing exports returns 503 when S3 times out", async () => {
+  process.env.S3_EXPORT_BUCKET = "supporthub-search-analytics-exports";
+  s3.send = async () => { const e = new Error("timeout"); e.name = "TimeoutError"; throw e; };
+  await assert.rejects(() => exportsService.listExports(), { status: 503 });
+});
+
+test("download returns 503 for S3 access errors but still 404 for a missing export", async () => {
+  process.env.S3_EXPORT_BUCKET = "supporthub-search-analytics-exports";
+  s3.send = async () => { const e = new Error("denied"); e.name = "AccessDenied"; e.$metadata = { httpStatusCode: 403 }; throw e; };
+  await assert.rejects(() => exportsService.getExport("analytics-20261119T203005Z.csv"), { status: 503 });
+  s3.send = async () => { const e = new Error("missing"); e.$metadata = { httpStatusCode: 404 }; throw e; };
+  await assert.rejects(() => exportsService.getExport("analytics-20261119T203005Z.csv"), { status: 404 });
+});
+
+test("S3 client fails fast (connection 3 s, request 8 s) inside the 10 s proxy budget", async () => {
+  const handler = await s3.config.requestHandler;
+  const cfg = handler.configProvider ? await handler.configProvider : handler.config || {};
+  assert.equal(cfg.connectionTimeout, 3000);
+  assert.equal(cfg.requestTimeout, 8000);
+});

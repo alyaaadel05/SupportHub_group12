@@ -6,13 +6,14 @@ const { id } = require("../services/http");
 
 exports.create = async (req, res, next) => {
   try {
-    const flag = await flags.flag(
+    const { duplicate, ...flag } = await flags.flag(
       id(req.params.id),
       req.user,
       req.body
     );
 
-    res.status(201).json({ flag });
+    // 201 = new re-review opened; 200 = an open re-review already exists.
+    res.status(duplicate ? 200 : 201).json({ flag, duplicate });
   } catch (error) {
     next(error);
   }

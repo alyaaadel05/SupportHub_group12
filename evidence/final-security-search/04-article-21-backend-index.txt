@@ -1,0 +1,109 @@
+SupportHub Group 12 - Final security & search - Task 4
+04 - Article 21 in the production Search backend index (READ-ONLY)
+==========================================================================
+
+TEST OBJECTIVE
+  Directly confirm, read-only, that production Article 21 is published in the Article
+  Service data and present - with identical content - in the actual Search & Analytics
+  backend index, with timestamps consistent with the publication workflow and with the
+  intended service-to-service authentication. Earlier evidence only showed public search
+  returning it (evidence/production-integration/production-integration-results.txt).
+
+ENVIRONMENT
+  Date (UTC)  : 2026-11-26 13:07-13:10Z
+  Target      : PRODUCTION Neon database "neondb", pooled endpoint ep-steep-mouse-****-pooler
+                (eu-central-1) - the same endpoint the production workers use
+  Access      : restricted per-service roles from %LOCALAPPDATA%\SupportHub\database-security\
+                (outside the repository, values never printed):
+                  articles                     -> supporthub_article_app
+                  search_published_articles    -> supporthub_search_app
+                  editorial_* tables           -> supporthub_editorial_app
+  Read-only enforcement (all three connections, verified in the output):
+                options "-c default_transaction_read_only=on" + BEGIN READ ONLY + ROLLBACK;
+                the script refuses any statement that is not a single SELECT;
+                transaction_read_only = "on" reported by the server for every connection.
+  TLS (client -> Neon): TLSv1.3, server certificate verified (sslmode=verify-full,
+                channel_binding=require). pg_stat_ssl reports ssl=false because it describes
+                Neon's internal pooler -> compute hop, not the client connection.
+  Nothing was updated, republished, reindexed, unpublished or deleted.
+
+INDEXING MECHANISM (from the code and schema)
+  services/search-analytics-service: the search index is the table search_published_articles
+  (article_id, title, content, category_id, published_at, updated_at - columns confirmed from
+  information_schema below). Rows are written only by indexPublished() after Editorial's
+  HMAC-signed POST /internal/publications (requireEditorialSignature), which first fetches the
+  authoritative article from Article Service (getPublishedArticle, HMAC-signed, must be
+  status=published) - the notification content itself is never trusted. Public search
+  (GET /api/public/articles) and article view read ONLY from search_published_articles.
+  Frontend: frontend/js/articles.js calls /public/articles and /public/articles/:id; no static
+  article dataset exists in frontend/ (grep for the title / hard-coded article arrays: 0 hits).
+
+COMMAND
+  node tests/integration/production-readonly-db-check.mjs article21
+
+OUTPUT (verbatim; content is represented by length + md5 only)
+article-role connection: {"current_user":"supporthub_article_app","session_user":"supporthub_article_app","ro":"on","db":"neondb","ssl":false,"tls":null}
+articles[21]: {"id":"21","status":"published","author_id":"9","category_id":"1","created_at":"2026-11-25T20:22:18.962Z","updated_at":"2026-11-25T23:52:32.261Z","published_at":"2026-11-25T23:52:32.261Z","title_len":37,"title_md5":"3b389cb544576a62af1cb2a89b8c7e1e","content_len":355,"content_md5":"dbc5c6e04abc0ee9d8bd22336d8029e7"}
+articles[21].title: "How to Reset Your SupportHub Password"
+search-role connection: {"current_user":"supporthub_search_app","session_user":"supporthub_search_app","ro":"on","db":"neondb","ssl":false,"tls":null}
+search_published_articles columns: [{"column_name":"article_id","data_type":"bigint"},{"column_name":"title","data_type":"character varying"},{"column_name":"content","data_type":"text"},{"column_name":"category_id","data_type":"bigint"},{"column_name":"published_at","data_type":"timestamp with time zone"},{"column_name":"updated_at","data_type":"timestamp with time zone"}]
+search_published_articles[21]: {"article_id":"21","category_id":"1","published_at":"2026-11-25T23:52:32.261Z","updated_at":"2026-11-25T23:52:35.159Z","title_len":37,"title_md5":"3b389cb544576a62af1cb2a89b8c7e1e","content_len":355,"content_md5":"dbc5c6e04abc0ee9d8bd22336d8029e7"}
+index size: {"indexed_articles":2}
+editorial-role connection: {"current_user":"supporthub_editorial_app","session_user":"supporthub_editorial_app","ro":"on","db":"neondb","ssl":false,"tls":null}
+editorial_status_events[21]: [{"event_id":"4","actor_id":"9","previous_status":"draft","new_status":"in_review","created_at":"2026-11-25T23:50:47.840Z"},{"event_id":"5","actor_id":"10","previous_status":"in_review","new_status":"approved","created_at":"2026-11-25T23:52:00.112Z"},{"event_id":"6","actor_id":"10","previous_status":"approved","new_status":"published","created_at":"2026-11-25T23:52:32.822Z"}]
+editorial_reviews[21]: [{"review_id":"3","submitted_by":"9","reviewer_id":"10","decision":"approved","created_at":"2026-11-25T23:50:47.840Z","decided_at":"2026-11-25T23:52:00.112Z"}]
+publication_outbox[21] (Editorial -> Search notification): [{"outbox_id":"1","state":"delivered","attempts":0,"created_at":"2026-11-25T23:52:32.822Z","delivered_at":"2026-11-25T23:52:35.266Z"}]
+editorial_outdated_flags[21]: [{"flag_id":"1","status":"open","created_at":"2026-11-25T23:56:28.523Z","resolved_at":null}]
+checks:
+PASS | Article 21 exists in the Article Service table
+PASS | Article 21 status = published
+PASS | Article 21 exists in the Search backend index (search_published_articles)
+PASS | indexed article_id = source id
+PASS | indexed title identical (md5)
+PASS | indexed content identical (md5 + length)
+PASS | indexed category identical
+PASS | indexed published_at = source published_at
+PASS | index updated_at at/after publication
+PASS | editorial history contains approved -> published
+PASS | Editorial -> Search publication notification delivered
+Total: 11 passed, 0 failed
+
+TIMELINE CONSISTENCY (production, 2026-11-25 UTC)
+  20:22:18.962  article created (author 9)
+  23:50:47.840  submitted: draft -> in_review (actor 9), review 3 opened
+  23:52:00.112  approved by reviewer 10 (not the author)
+  23:52:32.261  Article Service status published, published_at set
+  23:52:32.822  Editorial approved -> published event + Search notification queued (outbox 1)
+  23:52:35.159  Search index row written/updated (indexPublished)
+  23:52:35.266  Editorial marks the Search notification delivered
+  23:56:28.523  outdated flag #1 opened (from the earlier live test; still open - NOT changed)
+  -> index entry created 2.9 s after publication and BEFORE the notification was marked
+     delivered, i.e. through the HMAC Editorial -> Search -> Article path.                  PASS
+
+ADDITIONAL CHECKS
+  Public search / article view NOT called now: both endpoints INSERT analytics rows
+  (search_query_logs, article_views) and would modify production records. Public retrieval
+  of Article 21 is covered by the earlier live test (production-integration evidence:
+  "Search results: PASS", "Article reading: PASS"); the code path proves those responses come
+  from search_published_articles (verified above), not from a static dataset.         PASS (code + DB), live re-call NOT PERFORMED by design
+  Internal authentication: /internal/publications requires the Editorial HMAC signature;
+  previously shown live: unsigned POST -> {"error":"Invalid service credentials"}
+  (services/search-analytics-service/evidence/tailscale-connectivity.txt) and signed
+  GET /internal/articles/21 from the production editorial worker -> ok, status=published
+  (evidence/security-automation/01).                                                  PASS (prior evidence, not repeated)
+  Restricted roles: all three connections ran as non-superuser restricted roles
+  (rolsuper/createrole/createdb/bypassrls = false; see 01).                           PASS
+
+RESULTS
+  11 PASS / 0 FAIL ; timeline consistent ; no production record modified.
+  DEFECTS: none. CHANGES: tests/integration/production-readonly-db-check.mjs (new, read-only tool).
+
+REMAINING LIMITATIONS / MANUAL ACTIONS
+  - The production index holds 2 articles. Article 21 has an OPEN outdated flag (#1) from the
+    earlier live test; its re-review was intentionally not processed (read-only task).
+  - Optional manual live check (writes one analytics row each, so only with your approval):
+      https://supporthub-group12.pages.dev  -> search "reset password" -> open Article 21.
+  - Equivalent read-only SQL for your own verification (Neon SQL editor, any role with SELECT):
+      SELECT a.id, a.status, a.published_at, s.updated_at AS indexed_at,
+             md5(a.title)=md5(s.title) AS title_match, md5(a.content)=md5(s.content) AS content_match
+      FROM articles a JOIN search_published_articles s ON s.article_id = a.id WHERE a.id = 21;

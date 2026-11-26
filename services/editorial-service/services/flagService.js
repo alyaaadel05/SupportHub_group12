@@ -52,15 +52,40 @@ function createFlagService({ pool, getArticle }) {
       );
     }
 
-    const result = await pool.query(
-      `INSERT INTO editorial_outdated_flags
-         (article_id, flagged_by, reason)
-       VALUES ($1, $2, $3)
-       RETURNING *`,
-      [articleId, userId, reason]
-    );
+    // One open re-review per article (migration 008). A repeated or
+    // concurrent report returns the existing open flag instead of opening
+    // a parallel re-review. Two attempts cover the case where the open
+    // flag is resolved between the INSERT and the SELECT.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const result = await pool.query(
+        `INSERT INTO editorial_outdated_flags
+           (article_id, flagged_by, reason)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (article_id) WHERE status = 'open' DO NOTHING
+         RETURNING *`,
+        [articleId, userId, reason]
+      );
 
-    return result.rows[0];
+      if (result.rows[0]) {
+        return { ...result.rows[0], duplicate: false };
+      }
+
+      const existing = await pool.query(
+        `SELECT *
+         FROM editorial_outdated_flags
+         WHERE article_id = $1
+           AND status = 'open'
+         ORDER BY flag_id
+         LIMIT 1`,
+        [articleId]
+      );
+
+      if (existing.rows[0]) {
+        return { ...existing.rows[0], duplicate: true };
+      }
+    }
+
+    throw new HttpError(409, "Flag could not be recorded; please retry");
   }
 
   async function listOpen(options = {}) {
@@ -137,6 +162,43 @@ function createFlagService({ pool, getArticle }) {
       "Resolution"
     );
 
+    const existing = await pool.query(
+      `SELECT flag_id, article_id, status
+       FROM editorial_outdated_flags
+       WHERE flag_id = $1`,
+      [flagId]
+    );
+
+    const current = existing.rows[0];
+
+    if (!current) {
+      throw new HttpError(404, "Flag not found");
+    }
+
+    if (current.status !== "open") {
+      throw new HttpError(409, "Flag has already been resolved");
+    }
+
+    // Same rule as publication: nobody re-reviews their own article.
+    // Fails closed if Article Service cannot answer (error propagates);
+    // a deleted article (404) has no author left to protect.
+    let article = null;
+
+    try {
+      article = await getArticle(current.article_id);
+    } catch (error) {
+      if (Number(error?.status) !== 404) {
+        throw error;
+      }
+    }
+
+    if (article && Number(article.author_id) === userId) {
+      throw new HttpError(
+        403,
+        "Cannot resolve the re-review of your own article"
+      );
+    }
+
     const result = await pool.query(
       `UPDATE editorial_outdated_flags
        SET status = 'resolved',
@@ -153,17 +215,7 @@ function createFlagService({ pool, getArticle }) {
       return result.rows[0];
     }
 
-    const existing = await pool.query(
-      `SELECT flag_id, status
-       FROM editorial_outdated_flags
-       WHERE flag_id = $1`,
-      [flagId]
-    );
-
-    if (!existing.rows[0]) {
-      throw new HttpError(404, "Flag not found");
-    }
-
+    // Resolved concurrently by another editor.
     throw new HttpError(409, "Flag has already been resolved");
   }
 
