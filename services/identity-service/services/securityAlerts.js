@@ -98,6 +98,24 @@ function securityAlertPublisher({
   return (req, res, next) => {
     const path = String(req.originalUrl || req.url || "").split("?")[0];
 
+    // Vercel freezes the function after the response, so an after-response publish only runs
+    // when the NEXT request arrives (verified live: alert reached SNS 41 s late). On Vercel the
+    // alert is published just BEFORE the response is finished, bounded to 1.5 s and never
+    // failing the request. Elsewhere (Docker) the original after-response publish is kept.
+    if (process.env.VERCEL) {
+      const end = res.end.bind(res);
+      res.end = (...args) => {
+        const event = process.env.IDENTITY_SNS_ENABLED === "true" ? alertEventFor(res.statusCode, path) : null;
+        if (!event || !shouldSend(event)) return end(...args);
+        Promise.race([
+          Promise.resolve().then(() => publish(event)).catch(() => {}),
+          new Promise(resolve => setTimeout(resolve, 1500))
+        ]).finally(() => end(...args));
+        return res;
+      };
+      return next();
+    }
+
     res.on("finish", () => {
       if (process.env.IDENTITY_SNS_ENABLED !== "true") return;
 

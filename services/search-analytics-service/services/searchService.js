@@ -31,6 +31,16 @@ async function publishedArticles() {
 
 function clearSearchCache() { cachedRows = null; cachedAt = 0; }
 
+// Vercel freezes a function between invocations, so the interval timers that flush the
+// DynamoDB counters and CloudWatch metrics only run when the NEXT request arrives (verified
+// live: the last search stayed unwritten). On Vercel the buffers are flushed before the
+// response, bounded to 1.5 s and never failing the request. Elsewhere (Docker) unchanged.
+async function flushOnServerless(timeoutMs = 1500) {
+  if (!process.env.VERCEL) return;
+  const flushes = Promise.allSettled([counters.flush(), metrics.flush()]);
+  await Promise.race([flushes, new Promise(resolve => setTimeout(resolve, timeoutMs))]);
+}
+
 async function search(input) {
   const { q, page, pageSize, categoryId, terms } = parseSearch(input);
   // Bounded on purpose (see PAGINATION-REVIEW.md): at most 1000 published articles are scored.
@@ -50,6 +60,7 @@ async function search(input) {
   counters.recordSearch(q, total); // DynamoDB live counter (never blocks or breaks search)
   metrics.record("Searches", 1); // CloudWatch metric
   if (total === 0) metrics.record("ZeroResultSearches", 1);
+  await flushOnServerless();
   return { results: result, articles: result, total, page, pageSize, searchId: logged.rows[0].search_id };
 }
 
@@ -62,6 +73,7 @@ async function getPublicArticle(value) {
   if (!rows[0]) throw new HttpError(404, "Published article not found");
   await pool.query(`INSERT INTO article_views(article_id) VALUES($1)`, [articleId]);
   counters.recordView(articleId); // DynamoDB live counter
+  await flushOnServerless();
   return { ...rows[0], status: "published" };
 }
 
@@ -89,4 +101,4 @@ async function indexPublished(input) {
   return { articleId, indexed: true };
 }
 
-module.exports = { words, scoreArticle, parseSearch, search, getPublicArticle, logClick, indexPublished, clearSearchCache };
+module.exports = { words, scoreArticle, parseSearch, search, getPublicArticle, logClick, indexPublished, clearSearchCache, flushOnServerless };

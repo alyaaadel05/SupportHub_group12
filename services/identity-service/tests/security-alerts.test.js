@@ -125,3 +125,42 @@ test("the middleware publishes after the response and never throws", () =>
     await new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(sent, ["authentication_failed"]);
   }));
+
+// ---- Vercel: publish BEFORE finishing the response (functions freeze after the response)
+test("on Vercel the alert is published before the response ends (bounded)", async () => {
+  const { securityAlertPublisher } = require("../services/securityAlerts");
+  process.env.VERCEL = "1"; process.env.IDENTITY_SNS_ENABLED = "true";
+  const order = [];
+  const mw = securityAlertPublisher({ publish: async e => { order.push("publish:" + e); }, shouldSend: () => true });
+  const res = { statusCode: 401, end: () => { order.push("end"); }, on() {} };
+  mw({ originalUrl: "/api/auth/login" }, res, () => {});
+  res.end();
+  await new Promise(r => setTimeout(r, 20));
+  assert.deepEqual(order, ["publish:authentication_failed", "end"]);
+  delete process.env.VERCEL; delete process.env.IDENTITY_SNS_ENABLED;
+});
+
+test("on Vercel a hanging SNS publish never blocks the response beyond the bound", async () => {
+  const { securityAlertPublisher } = require("../services/securityAlerts");
+  process.env.VERCEL = "1"; process.env.IDENTITY_SNS_ENABLED = "true";
+  let ended = 0; const t0 = Date.now();
+  const mw = securityAlertPublisher({ publish: () => new Promise(() => {}), shouldSend: () => true });
+  const res = { statusCode: 403, end: () => { ended = Date.now() - t0; }, on() {} };
+  mw({ originalUrl: "/api/articles" }, res, () => {});
+  res.end();
+  await new Promise(r => setTimeout(r, 1700));
+  assert.ok(ended > 0 && ended < 2000, `ended after ${ended} ms`);
+  delete process.env.VERCEL; delete process.env.IDENTITY_SNS_ENABLED;
+});
+
+test("on Vercel non-alert responses end immediately without publishing", () => {
+  const { securityAlertPublisher } = require("../services/securityAlerts");
+  process.env.VERCEL = "1"; process.env.IDENTITY_SNS_ENABLED = "true";
+  let published = 0, ended = 0;
+  const mw = securityAlertPublisher({ publish: async () => { published++; }, shouldSend: () => true });
+  const res = { statusCode: 200, end: () => { ended++; }, on() {} };
+  mw({ originalUrl: "/api/auth/me" }, res, () => {});
+  res.end();
+  assert.equal(published, 0); assert.equal(ended, 1);
+  delete process.env.VERCEL; delete process.env.IDENTITY_SNS_ENABLED;
+});
