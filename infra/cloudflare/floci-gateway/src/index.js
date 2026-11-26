@@ -26,6 +26,26 @@ async function sameSecret(a, b) {
   return diff === 0;
 }
 
+// Returns a short refusal reason, or "" when the request may be forwarded.
+// Allow-lists come from env: ALLOWED_ACCESS_KEY_IDS (secret, comma separated - the component keys
+// used by the Vercel APIs) and ALLOWED_SERVICES (default "s3,dynamodb,monitoring,sns").
+export function authorizeAws(request, url, env) {
+  if ([...url.searchParams.keys()].some(k => k.toLowerCase().startsWith("x-amz-"))) return "Presigned requests are not accepted";
+  const auth = request.headers.get("authorization") || "";
+  const m = auth.match(/^AWS4-HMAC-SHA256\s+Credential=([^/\s,]+)\/\d{8}\/[a-z0-9-]+\/([a-z0-9-]+)\/aws4_request/);
+  if (!m) return "Signed AWS request required";
+  const allowedKeys = String(env.ALLOWED_ACCESS_KEY_IDS || "").split(",").map(s => s.trim()).filter(Boolean);
+  if (!allowedKeys.length || !allowedKeys.includes(m[1])) return "Access key not allowed";
+  const allowedServices = String(env.ALLOWED_SERVICES || "s3,dynamodb,monitoring,sns").split(",").map(s => s.trim());
+  // Optional per-key rules (secret KEY_SERVICE_RULES = "AKID=svc|svc;AKID2=svc"): when a key has a
+  // rule, ONLY its listed services are allowed (e.g. Secrets Manager just for the Article key).
+  const rule = String(env.KEY_SERVICE_RULES || "").split(";").map(s => s.trim()).find(s => s.startsWith(m[1] + "="));
+  if (rule) {
+    if (!rule.slice(m[1].length + 1).split("|").map(s => s.trim()).includes(m[2])) return "Service not allowed for this key";
+  } else if (!allowedServices.includes(m[2])) return "Service not allowed";
+  return "";
+}
+
 export async function handle(request, env) {
   const url = new URL(request.url);
   if (url.pathname === "/__gateway/health" && request.method === "GET") {
@@ -39,6 +59,11 @@ export async function handle(request, env) {
   if (!okId || !okSecret) {
     return new Response("Forbidden", { status: 403 });
   }
+  // Defence in depth behind the token: Floci accepts its default admin credentials and serves
+  // unsigned S3 reads, so only SigV4-signed requests from allow-listed component access keys to
+  // allow-listed services are forwarded (Floci IAM then limits each key to its own policy).
+  const policy = authorizeAws(request, url, env);
+  if (policy) return new Response(policy, { status: 403 });
   const headers = new Headers(request.headers);
   for (const h of STRIP) headers.delete(h);
   // Host and port come from the VPC Service configuration; the URL host only sets the Host header.

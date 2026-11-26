@@ -1,0 +1,67 @@
+SupportHub Group 12 - Step 2: Cloudflare gateway (CLI only, free plan)
+==========================================================================
+Date (UTC) 2026-11-26 16:20-16:37 (17 of the 90 allowed minutes). No paid feature, no domain.
+Secrets: tunnel token -> infra/floci/.generated/production/cloudflared.env ; gateway token ->
+gateway.env ; Vercel component keys -> vercel-{article,search,identity}.aws.env (all git-ignored,
+owner-only). No secret value was printed or written to this evidence.
+
+1. wrangler 4.168.0 OAuth login by the account owner (first attempt timed out, second succeeded).
+2. Tunnel: npx wrangler tunnel create supporthub-floci -> ID 695b37ba-6ed6-439c-bd6d-2ec9e1b8db12
+   (create output contained no token; raw output deleted after extracting the ID).
+3. Token: official endpoint GET /client/v4/accounts/{account}/cfd_tunnel/{tunnel}/token with the
+   wrangler OAuth session -> HTTP 200, written only to cloudflared.env (length 240, not shown).
+4. Connector: docker run supporthub-cloudflared (cloudflare/cloudflared:latest) on floci_default,
+   restart unless-stopped, NO published port -> 4 registered tunnel connections (QUIC, pmo01/fco01).
+5. Workers VPC service: npx wrangler vpc service create supporthub-floci --type http
+   --tunnel-id <tunnel> --hostname floci --http-port 4566 -> 01a218b2-3ec4-73c2-81e8-f04e33ad2538
+6. Worker: infra/cloudflare/floci-gateway (wrangler.jsonc with the VPC binding) deployed to
+   https://supporthub-floci-gateway.<subdomain>.workers.dev (free workers.dev, Version 2206da8e).
+   Secrets GATEWAY_CLIENT_ID, GATEWAY_CLIENT_SECRET, ALLOWED_ACCESS_KEY_IDS set via stdin.
+7. Hardening added BEFORE live testing (security requirement "no IAM admin, no unrestricted S3
+   reads"): forward only SigV4-signed requests (no unsigned / presigned), only allow-listed access
+   key ids (the three Vercel component keys - never Floci's default admin key), only services
+   s3, dynamodb, monitoring (CloudWatch), sns. Local test with the real Worker code: 12/12 PASS.
+8. Vercel component keys: remote-init-aws.sh (local mode) created ONE new key each for
+   supporthub-article-service, search-analytics-service, supporthub-identity-service (existing
+   keys kept); all other resources reused (19/19).
+
+LIVE VERIFICATION (node tests/integration/floci-gateway-live-check.mjs) - 19/19 PASS
+Live gateway check 2026-11-26T16:36:27.814Z - https://supporthub-floci-gateway.<subdomain>.workers.dev
+PASS | health endpoint 200 and reveals nothing about Floci | {"status":"ok","service":"supporthub-floci-gateway"}
+PASS | no token -> 403 | HTTP 403
+PASS | wrong token secret -> 403 | HTTP 403
+PASS | UNSIGNED S3 read with a valid token -> 403 at the gateway | HTTP 403 Signed AWS request required
+PASS | service 'iam' refused for an allowed key -> 403 | 403 Service not allowed
+PASS | service 'sts' refused for an allowed key -> 403 | 403 Service not allowed
+PASS | service 'secretsmanager' refused for an allowed key -> 403 | 403 Service not allowed
+PASS | service 'sqs' refused for an allowed key -> 403 | 403 Service not allowed
+PASS | service 'lambda' refused for an allowed key -> 403 | 403 Service not allowed
+PASS | service 'ecs' refused for an allowed key -> 403 | 403 Service not allowed
+PASS | Floci default ADMIN key refused at the gateway -> 403
+PASS | Search -> DynamoDB Scan via live gateway
+PASS | Search -> S3 PutObject 70 KB binary via live gateway
+PASS | binary body byte-identical after the live round trip (sha256) | 70000 bytes
+PASS | Search -> CloudWatch PutMetricData via live gateway
+PASS | Search key DENIED the Article bucket (Floci IAM behind the gateway) | AccessDenied
+PASS | Article -> S3 backup Put/Get via live gateway
+PASS | Article key DENIED the Search exports bucket | AccessDenied
+PASS | Identity key DENIED publishing to the publication topic (no event injection) | AuthorizationErrorException
+Total: 19 passed, 0 failed
+
+Probe data written to production Floci by the test: exports/gateway-probe-*.bin (70 KB),
+articles/gateway-probe/*.json, metric SupportHub/Search GatewayProbe (deletion is denied to the
+component keys by design; left in place and documented).
+LIMITATIONS: Workers VPC is free only during its beta (post-beta pricing not stated); the Floci host
+(this laptop) must be running; Floci does not verify SigV4 signatures, so the gateway token is the
+authentication and Floci IAM enforces each component key's policy.
+STATUS: STEP 2 COMPLETED (live).
+
+ADDENDUM (16:45 UTC, Step 3 preparation) - supersedes the 19/19 block above
+  Finding: the Article API's backup export reads Secrets Manager (supporthub/article/runtime-config);
+  the gateway blocked Secrets Manager and the Article user had no secrets permission -> backups
+  would fail on Vercel (503).
+  Fix (least privilege): new policy infra/iam/article-runtime-config-secret-policy.json (only that
+  secret) added to supporthub-article-service (put-user-policy; existing policies kept; also added
+  to remote-init-aws.sh), and per-key gateway rules (Worker secret KEY_SERVICE_RULES):
+  Article = s3|secretsmanager, Search = s3|dynamodb|monitoring, Identity = sns. Version 4eadb1ab.
+  Live re-run: 24/24 PASS - see live-gateway-check.txt (current results).

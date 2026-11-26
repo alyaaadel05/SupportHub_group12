@@ -17,7 +17,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const { handle } = await import(pathToFileURL(path.join(ROOT, "infra/cloudflare/floci-gateway/src/index.js")).href);
 const FLOCI = "http://127.0.0.1:4567";
+const keyId = f => (fs.readFileSync(path.join(ROOT, "infra/floci/.generated/isolated", f), "utf8").match(/^AWS_ACCESS_KEY_ID=(.+)$/m) || [])[1].trim();
 const env = {
+  ALLOWED_ACCESS_KEY_IDS: [keyId("search.aws.env"), keyId("article.aws.env")].join(","),
   GATEWAY_CLIENT_ID: crypto.randomBytes(16).toString("hex") + ".gw",
   GATEWAY_CLIENT_SECRET: crypto.randomBytes(32).toString("hex"),
   FLOCI: { fetch: req => { const u = new URL(req.url); return fetch(FLOCI + u.pathname + u.search, { method: req.method, headers: req.headers, body: req.body, duplex: "half", redirect: "manual" }); } }
@@ -92,6 +94,17 @@ const token = { FLOCI_ACCESS_CLIENT_ID: env.GATEWAY_CLIENT_ID, FLOCI_ACCESS_CLIE
   try { await c2.dynamo.send(new ScanCommand({ TableName: "supporthub-search-counters", Limit: 1 })); check("wrong gateway secret rejected", false); }
   catch (e) { check("wrong gateway secret rejected (403 at the Worker)", e.$metadata?.httpStatusCode === 403); }
   const h = await fetch(`${GW}/__gateway/health`); check("unauthenticated health endpoint reveals nothing about Floci", h.status === 200 && !(await h.text()).includes("floci:"));
+  // Hardening: admin key, unsigned reads and non-allow-listed services are refused at the gateway.
+  const { m: adm, req: areq } = load("search-analytics-service", "services/awsClients.js", { AWS_ACCESS_KEY_ID: "test", AWS_SECRET_ACCESS_KEY: "test", ...token });
+  Object.assign(process.env, { AWS_ACCESS_KEY_ID: "test", AWS_SECRET_ACCESS_KEY: "test" });
+  try { await adm.dynamo.send(new (areq("@aws-sdk/lib-dynamodb").ScanCommand)({ TableName: "supporthub-search-counters", Limit: 1 })); check("Floci default ADMIN key refused at the gateway", false); }
+  catch (e) { check("Floci default ADMIN key refused at the gateway (403)", e.$metadata?.httpStatusCode === 403); }
+  const u = await fetch(`${GW}/supporthub-search-analytics-exports/exports/x.csv`, { headers: { "cf-access-client-id": env.GATEWAY_CLIENT_ID, "cf-access-client-secret": env.GATEWAY_CLIENT_SECRET } });
+  check("UNSIGNED S3 read refused at the gateway even with the token (403)", u.status === 403, `HTTP ${u.status} ${await u.text()}`);
+  const iam = await fetch(`${GW}/?Action=ListUsers&Version=2010-05-08`, { headers: { "cf-access-client-id": env.GATEWAY_CLIENT_ID, "cf-access-client-secret": env.GATEWAY_CLIENT_SECRET,
+    authorization: `AWS4-HMAC-SHA256 Credential=${keyId("search.aws.env")}/20261126/us-east-1/iam/aws4_request, SignedHeaders=host, Signature=00` } });
+  check("IAM service refused at the gateway for an allowed key (403)", iam.status === 403, `HTTP ${iam.status} ${await iam.text()}`);
+  for (const k of ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]) delete process.env[k];
 }
 console.log(`gateway decisions: forwarded=${forwarded} denied=${denied}`);
 console.log(`Total: ${pass} passed, ${fail} failed`);

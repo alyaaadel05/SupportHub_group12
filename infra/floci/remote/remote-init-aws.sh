@@ -161,7 +161,7 @@ ensure_user "$EDITORIAL_WORKER_USER" editorial.aws.env \
 if [ "${SUPPORTHUB_SKIP_VERCEL_USERS:-false}" = true ]; then
   echo "  Vercel-facing IAM users skipped (SUPPORTHUB_SKIP_VERCEL_USERS=true): no policy change, no new key"
 else
-ensure_user supporthub-article-service vercel-article.aws.env SupportHubArticleS3Policy=infra/iam/article-s3-policy.json
+ensure_user supporthub-article-service vercel-article.aws.env SupportHubArticleS3Policy=infra/iam/article-s3-policy.json ArticleRuntimeConfigSecret=infra/iam/article-runtime-config-secret-policy.json
 ensure_user search-analytics-service vercel-search.aws.env SearchAnalyticsLeastPrivilege=services/search-analytics-service/infra/iam/search-analytics-policy.json
 ensure_user supporthub-identity-service vercel-identity.aws.env SupportHubIdentitySNSPublisher=infra/iam/identity-sns-policy.json
 fi
