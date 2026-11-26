@@ -1,0 +1,119 @@
+=== Task 1: Production Vercel services and Docker worker configuration verification ===
+Run (UTC): 2026-11-26 ~04:00-04:20
+Mode: READ-ONLY. No credential rotated, no Vercel redeploy/config change, no production
+container stopped/restarted, no production data written. Secret values never printed
+(only role names, key lengths, SHA-256 prefixes, booleans).
+
+--- 1. Existing evidence reviewed ---
+evidence/production-security/database-credential-rotation.txt (2026-11-26 04:22 local):
+  owner password reset completed; old owner credential rejection PASS; restricted DB
+  component migration 6/6; DB permission checks 32/32; restricted auth 4/4; 4 APIs HTTP 200.
+evidence/production-integration/production-integration-results.txt: production workers,
+  separate production queue + DLQ, least-privilege IAM, live article lifecycle 14/14.
+
+--- 2. Private configuration (outside Git: %LOCALAPPDATA%\SupportHub\) ---
+production-workers/: article.aws.env, article.restricted.env, editorial.aws.env,
+  editorial.restricted.env   (key names only inspected)
+database-security/: {article,identity,editorial,search}.database.env, editorial.vercel.env,
+  4 role password files, editorial.cron.secret
+Role parsed from each DATABASE_URL_POOLED (password not read out):
+  article.database.env   -> role=supporthub_article_app   pooled=true sslmode=verify-full
+  identity.database.env  -> role=supporthub_identity_app  pooled=true sslmode=verify-full
+  editorial.database.env -> role=supporthub_editorial_app pooled=true sslmode=verify-full
+  editorial.vercel.env   -> role=supporthub_editorial_app pooled=true sslmode=verify-full
+  search.database.env    -> role=supporthub_search_app    pooled=true sslmode=verify-full
+PASS  intended restricted role defined for every service (no owner role in any private file)
+
+--- 3. Production Docker workers (docker inspect, values redacted) ---
+supporthub-prod-article-outbox-worker
+  image supporthub-prod-article:local, cmd services/articleOutboxScheduler.js
+  restart=unless-stopped, RestartCount=0, network floci_default
+  NODE_ENV=production, AWS_ENDPOINT_URL=http://floci:4566
+  SQS_QUEUE_URL=http://floci:4566/000000000000/supporthub-article-events-production
+  DATABASE_URL_POOLED role=supporthub_article_app host=ep-***.c-7.eu-central-1.aws.neon.tech sslmode=verify-full
+supporthub-prod-editorial-article-worker
+  image supporthub-prod-editorial:local, cmd workers/articleEventConsumer.js
+  restart=unless-stopped, RestartCount=0, network floci_default
+  ARTICLE_SERVICE_URL=https://supporthub-article-service.vercel.app
+  ARTICLE_EVENTS_QUEUE_URL=http://floci:4566/000000000000/supporthub-article-events-production
+  SQS_VISIBILITY_TIMEOUT=60, SQS_WAIT_TIME_SECONDS=20
+  DATABASE_URL_POOLED role=supporthub_editorial_app (same production endpoint) sslmode=verify-full
+PASS  article.restricted.env: 7/7 keys identical to container env (0 differ)
+PASS  editorial.restricted.env: 11/11 keys identical to container env (0 differ)
+PASS  <comp>.aws.env access key == <comp>.restricted.env access key (both workers)
+
+Live DB identity (read-only query executed INSIDE each container with its own pool):
+  article worker  : current_user=session_user=supporthub_article_app, db=neondb,
+                    rolsuper=false rolcreaterole=false rolcreatedb=false rolbypassrls=false rolreplication=false
+  editorial worker: current_user=session_user=supporthub_editorial_app, db=neondb, same flags all false
+PASS  both workers authenticate as their restricted, non-privileged roles
+
+Signed (HMAC) service call from the editorial worker (read-only GET):
+  GET https://supporthub-article-service.vercel.app/internal/articles/21 -> ok, article 21 status=published
+PASS  worker SERVICE_SHARED_SECRET matches the deployed Article service
+
+AWS configuration (main Floci :4566, read-only / deny-only calls with each worker's key):
+  IAM user owning article worker key  : supporthub-prod-article-publisher  (policy ProductionArticlePublishOnly: sqs:SendMessage on production queue only)
+  IAM user owning editorial worker key: supporthub-prod-editorial-consumer (policy ProductionEditorialConsumeOnly: Receive/Delete/ChangeVisibility/GetQueueAttributes/GetQueueUrl on production queue only)
+  PASS editorial key GetQueueAttributes production queue -> ALLOW
+  PASS editorial key SendMessage production queue        -> DENY
+  PASS editorial key GetQueueAttributes dev queue        -> DENY
+  PASS article key ReceiveMessage production queue       -> DENY
+  PASS article key GetQueueAttributes production queue   -> DENY
+  PASS article key SendMessage dev queue                 -> DENY
+  PASS article key S3 ListBuckets                        -> DENY
+  (no message was sent to the production queue)
+Production queue attributes:
+  supporthub-article-events-production: VisibilityTimeout=60, retention 345600 s, SSE on,
+    RedrivePolicy -> supporthub-article-events-production-dlq maxReceiveCount=5, 0 visible / 0 in flight
+  supporthub-article-events-production-dlq: retention 345600 s, 0 messages
+Worker logs (last 2-3 h, counts only):
+  article worker  : 1050 lines, 0 error lines, 0 DB auth failures ("No pending events")
+  editorial worker: 3 polling errors at 03:35:26-03:36:00 UTC (EAI_AGAIN/ECONNREFUSED floci)
+    immediately after a Docker restart; supporthub-floci started 03:36:00 UTC; no errors
+    since -> self-recovered. Shows Floci must be ready before workers (handled in Task 3 script).
+
+--- 4. Deployed Vercel APIs (GET only, no login, no writes) ---
+  PASS article   /api/health -> 200 {"status":"ok","service":"article-service"}   (handler runs SELECT 1)
+  PASS identity  /api/health -> 200 {"status":"ok","service":"identity-service","database":"connected"}
+  PASS editorial /api/health -> 200 {"status":"ok","service":"editorial-service"} (handler runs SELECT 1)
+  PASS search    /api/health -> 200 {"status":"ok","service":"search-analytics-service","database":"connected"}
+  PASS identity  GET /api/auth/csrf -> 200 ; GET /api/auth/me (no session) -> 401
+  PASS search    GET /api/analytics/overview (no session) -> 401
+  => every deployment authenticates to Neon with a currently valid credential (the old owner
+     password is rejected per rotation evidence, so none of them can be using it).
+  Note: Search public search was NOT called because it writes search_query_logs rows in production.
+
+--- 5. Revoked credential no longer used (secure comparison, value never shown) ---
+Revoked value source: history-cleanup backup credential-replacements.txt (git-filter-repo
+  "literal:<value>==>REMOVED_EXPOSED_PASSWORD"; prefix stripped -> 16 chars, sha256 prefix f5127eec7753).
+  Correction recorded honestly: a first pass used the line including the "literal:" prefix
+  (24 chars) and could never match; it was discarded and every check below was re-run.
+  Positive control: old local commit d0a2a2b0 backend/.env.example -> 2 matches (pattern works)
+  Negative control: rewritten commit 5134506b backend/.env.example -> 0 matches
+  The exposed URL's Neon endpoint hash = 6ad09b0b = the production endpoint (owner role).
+  PASS production-workers private files containing it: 0
+  PASS database-security private files containing it : 0
+  PASS Docker containers (24, running+stopped) with it in env: 0
+  PASS working-tree files containing it: 0
+  PASS owner role referenced in private production configs: 0
+Observation (out of scope, not modified): 5 DEVELOPMENT containers (supporthub-article,
+  supporthub-article-outbox-worker, supporthub-identity, supporthub-editorial,
+  supporthub-editorial-article-worker) still connect as the owner role of the separate
+  DEVELOPMENT Neon endpoint (endpoint hash 068e7aa5 != production 6ad09b0b). They do not
+  use the revoked production value. Recommendation: move dev to restricted roles later.
+
+--- 6. NOT verifiable with available access -> manual verification required ---
+No Vercel CLI, token or dashboard access is available in this environment, so the
+environment variables stored in the four Vercel projects could not be read. Remaining
+manual check (Alyaa, Vercel dashboard -> Project -> Settings -> Environment Variables ->
+Production), WITHOUT redeploying healthy projects:
+  supporthub-article-service           DATABASE_URL(_POOLED) user = supporthub_article_app
+  supporthub-identity-service          DATABASE_URL(_POOLED) user = supporthub_identity_app
+  supporthub-editorial-service-group1  DATABASE_URL(_POOLED) user = supporthub_editorial_app
+  supporthub-search-analytics-group12  DATABASE_URL(_POOLED) user = supporthub_search_app
+  and that no variable contains neondb_owner; confirm the latest Production deployment was
+  created after the 2026-11-26 rotation (so it runs with the current variables).
+
+Result: 24 PASS, 0 FAIL; Vercel env-var role assignment = MANUAL VERIFICATION REQUIRED.
+Status: PARTIAL (all checks possible with available access passed).

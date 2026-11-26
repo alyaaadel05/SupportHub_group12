@@ -1,0 +1,88 @@
+=== Task 4: Floci and queue initialisation automation ===
+Run (UTC): 2026-11-26
+
+Created: infra/floci/floci-queues.sh
+Created: infra/iam/production-article-sqs-publish-policy.json
+         infra/iam/production-editorial-sqs-consumer-policy.json
+         (exported read-only from the live production users; no secrets; lets the script
+          compare the live policies instead of overwriting them)
+Reused:  infra/floci/isolated-env.sh (isolated profile), infra/floci/docker-compose.yml
+         (production Floci, only if the container is missing), docker-compose.supporthub.yml
+         (isolated Floci, only if missing), infra/iam/article-sqs-policy.json,
+         infra/iam/editorial-sqs-consumer-policy.json, existing IAM users and access keys.
+
+Profiles (never mixed; the endpoint port must be the one published by that profile's container)
+  production: http://localhost:4566, supporthub-floci, network floci_default,
+              supporthub-article-events-production + -dlq, VisibilityTimeout 60, maxReceiveCount 5,
+              users supporthub-prod-article-publisher / supporthub-prod-editorial-consumer,
+              keys %LOCALAPPDATA%\SupportHub\production-workers\{article,editorial}.aws.env
+  isolated:   http://localhost:4567, supporthub-iso-floci, network supporthub-iso-net,
+              supporthub-article-events + -dlq, VisibilityTimeout 30, maxReceiveCount 5,
+              users supporthub-article-service / supporthub-editorial-service,
+              keys infra/floci/.generated/isolated/{article,editorial}.aws.env (git-ignored)
+
+What it does (check first, create only if missing, never overwrite a mismatch)
+  1. Floci container: exists? running? (start if stopped) - create only if missing and the port
+     is free; verifies host port, restart policy unless-stopped, IAM enforcement, network
+  2. waits for /_floci/health "sqs":"running"; AWS CLI connectivity (Floci root creds "test")
+  3. queues: duplicate check; DLQ exists?; queue exists?; VisibilityTimeout, redrive target ARN
+     and maxReceiveCount compared -> mismatch = FAIL + exit 3 (not overwritten); queue depths
+  4. IAM: user exists?; inline policy present and semantically equal to the repo policy file
+     (mismatch = exit 3, not overwritten); key file key is an ACTIVE key of that user and
+     authenticates as that user (sts get-caller-identity) -> reused. No valid key file ->
+     FAIL, no key created unless --allow-new-key (then max 1 key, never overwrites a file)
+  5. reachability of the queue with the editorial consumer key
+  Missing dependencies: docker / Docker Desktop / aws / curl / node -> exit 2 with a message.
+  Modes: --verify-only (read-only), --counts, --allow-new-key, --quiet.
+  Exit codes: 0 ok | 1 check failed | 2 prerequisite | 3 unexpected configuration | 4 Floci not ready
+
+--- Production, read-only verification ---
+$ bash infra/floci/floci-queues.sh --env production --verify-only
+  [PASS] container supporthub-floci exists (count=1, reused) / running
+  [PASS] supporthub-floci publishes 4566 on host port 4566 only (environment separation)
+  [PASS] restart policy unless-stopped / IAM enforcement enabled / attached to floci_default
+  [PASS] Floci healthy, SQS running / AWS CLI connectivity
+  [PASS] no duplicate supporthub-article-events-production queues (found 1)
+  [PASS] DLQ supporthub-article-events-production-dlq exists (reused)
+  [PASS] queue supporthub-article-events-production exists (reused, not recreated)
+  [PASS] VisibilityTimeout=60 (expected 60)
+  [PASS] redrive target=arn:aws:sqs:us-east-1:000000000000:supporthub-article-events-production-dlq
+  [PASS] maxReceiveCount=5 (expected 5)
+  [INFO] supporthub-article-events-production visible/in-flight: 0/0 ; DLQ messages: 0
+  [PASS] IAM user supporthub-prod-article-publisher exists (reused)
+  [PASS] policy ProductionArticlePublishOnly matches infra/iam/production-article-sqs-publish-policy.json
+  [PASS] key file article.aws.env valid (key#d778c26ce5, 1 key(s) total) - reused, no new key
+  [PASS] IAM user supporthub-prod-editorial-consumer exists (reused)
+  [PASS] policy ProductionEditorialConsumeOnly matches infra/iam/production-editorial-sqs-consumer-policy.json
+  [PASS] key file editorial.aws.env valid (key#ecfe1d4042, 1 key(s) total) - reused, no new key
+  [PASS] editorial consumer key can reach supporthub-article-events-production
+  floci-queues (production): 21 passed, 0 failed, 0 change(s) [verify-only]  -> exit 0
+  COUNTS env=production floci_containers=1 article_events_queues=4 queue_iam_users=2/2
+         queue_iam_access_keys=2 all_iam_users=6
+  (4 article-events queues on main Floci = dev queue, demo queue, production queue, production DLQ)
+
+--- Isolated, verification ---
+$ bash infra/floci/floci-queues.sh --env isolated --verify-only
+  same 21 checks for supporthub-iso-floci :4567 / supporthub-article-events (+dlq, VisibilityTimeout
+  30, maxReceiveCount 5) / supporthub-article-service + supporthub-editorial-service keys
+  floci-queues (isolated): 21 passed, 0 failed, 0 change(s) [verify-only]  -> exit 0  (88 s)
+  COUNTS env=isolated floci_containers=1 article_events_queues=3 queue_iam_users=2/2
+         queue_iam_access_keys=2 all_iam_users=4
+  [INFO] isolated DLQ holds 8 messages from earlier resilience tests (kept, not purged)
+
+Normal (mutating) mode runs, missing-key behaviour and Floci restart handling: see
+05-idempotency-verification.txt (T5.3, T5.4) and 06-startup-recovery-tests.txt (T6.2, T6.4).
+Normal startup requires no manually typed AWS CLI command: start-production-workers.sh calls
+floci-queues.sh, which performs every AWS call.
+Observation: main Floci DLQ retention is 345600 s (4 days, same as the queue); AWS commonly
+uses 14 days for DLQs. Left unchanged (working production configuration).
+Status: COMPLETED.
+
+--- Update 2026-11-26 ~04:52Z (found by Task 6 test T6.2) ---
+Defect: with a PAUSED Floci, "docker port" returns nothing, so the port check reported
+"refusing to mix environments" (exit 3) instead of "Floci not ready" (exit 4). The refusal was
+safe (workers untouched) but misclassified.
+Fix in infra/floci/floci-queues.sh: (a) State.Paused -> exit 4 "paused - Floci not ready"
+(never unpaused automatically); (b) the host port is read from HostConfig.PortBindings (valid
+for running, paused and stopped containers). Re-verified: isolated paused -> exit 4 (T6.2 re-run),
+isolated healthy --verify-only 21/21 (T6.2b), production --verify-only 21/21 within T6.7.

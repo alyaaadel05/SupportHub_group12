@@ -1,0 +1,80 @@
+=== Task 3: Bash script for production worker startup ===
+Run (UTC): 2026-11-26
+
+Existing scripts inspected first:
+  infra/floci/setup-supporthub.sh  - full integrated/isolated stack (builds images, starts all
+                                     services, demo accounts). Too heavy for production worker
+                                     startup; creates queues/topics unconditionally and creates
+                                     an access key whenever its key file is missing.
+  infra/floci/isolated-env.sh, docker-compose.supporthub.yml, docker-compose.demo-queue.yml,
+  verify-iam.sh, verify-aws-usage.sh - reused for the isolated profile / policies.
+  Main Floci container supporthub-floci was originally created by docker compose from the OLD
+  repository folder; infra/floci/docker-compose.yml in this repository is byte-identical
+  (read-only comparison), so the new script uses this repository's copy (project name "floci",
+  same volume floci_floci-data) and never the old folder.
+  The production workers were created with "docker run" (no compose labels):
+  image supporthub-prod-article:local / supporthub-prod-editorial:local, network floci_default,
+  restart unless-stopped, env from the private *.restricted.env files (CRLF line endings).
+
+Created:  infra/floci/start-production-workers.sh   (uses infra/floci/floci-queues.sh, Task 4)
+Documented: infra/floci/README.md section "Production workers and queues (automated startup)"
+
+Exact startup command (repository root, Git Bash on Windows):
+    bash infra/floci/start-production-workers.sh
+  Dry run / non-disruptive verification:
+    bash infra/floci/start-production-workers.sh --dry-run
+    bash infra/floci/start-production-workers.sh --verify-only
+  Same logic against the isolated stack (used for disruptive tests):
+    bash infra/floci/start-production-workers.sh --env isolated
+
+Requirement coverage
+  Git Bash compatible ........ MSYS_NO_PATHCONV=1, cygpath for docker --env-file, /dev/tcp check,
+                               tested on Git Bash (Windows 11) - see runs below
+  Existing images/containers . reuses supporthub-floci and both supporthub-prod-* containers;
+                               never builds images (missing image -> exit 2)
+  Secure private config ...... %LOCALAPPDATA%\SupportHub\production-workers\*.restricted.env;
+                               refuses a config dir inside the repo; CR-stripped copy written to a
+                               0700 mktemp dir and removed by trap on exit; never copied into Git
+  Validation without values .. required variable NAMES checked; restricted supporthub_*_app role,
+                               no owner role, sslmode=verify-full, production queue URL,
+                               http://floci:4566 endpoints, HTTPS Article URL, HMAC length >= 32,
+                               NODE_ENV=production; output shows names/roles only
+  Dependency order ........... prerequisites -> config -> Floci (start if stopped) -> health wait
+                               -> queue/DLQ/redrive/IAM keys -> network alias + Neon TCP + Article
+                               /api/health -> article publisher -> editorial consumer -> post checks
+  Floci health readiness ..... polls /_floci/health until "sqs":"running" (FLOCI_WAIT_SECONDS, 90)
+  Queue availability ......... GetQueueAttributes on the production queue with the editorial key
+  Safe worker start .......... reuse if image/command/network/restart policy/env match; start if
+                               stopped; create only if missing (docker run --restart unless-stopped);
+                               config drift or another consumer of the same queue -> exit 3
+  Error handling / exit codes  0 ok | 1 failed check / action needed in --verify-only | 2 missing
+                               prerequisite/config | 3 conflicting config | 4 Floci not ready |
+                               5 worker failed to start
+  Dry-run / verify-only ...... --dry-run (plan only) and --verify-only (plan only + non-zero exit)
+  Restart policy preserved ... checked for Floci and both workers; new containers get unless-stopped
+
+--- Production run, NON-DISRUPTIVE (--verify-only; nothing started/stopped/changed) ---
+$ bash infra/floci/start-production-workers.sh --env production --verify-only
+  1. Prerequisites                         1 PASS
+  2. Private configuration                 12 PASS (both files outside repo; all required vars;
+     production queue URL; roles supporthub_article_app / supporthub_editorial_app with
+     verify-full; HMAC length; HTTPS Article URL; NODE_ENV=production)
+  3. floci-queues.sh --env production --verify-only: 21 passed, 0 failed, 0 change(s)
+  4. network floci_default; supporthub-floci alias 'floci'; Neon pooler TCP 5432 reachable;
+     Article service /api/health 200
+  5-6. supporthub-prod-article-outbox-worker / supporthub-prod-editorial-article-worker:
+     exist with expected image/command/network/restart policy/env (reused); already running
+  7. both running, restarts=0, restart-policy=unless-stopped, no connection/auth errors,
+     single instance each
+  Result: 29 passed, 0 failed, 0 action(s) planned  -> exit 0   (67 s)
+  (repeated as T6.7 in 06-startup-recovery-tests.txt)
+
+--- Behaviour tests (isolated profile + production --dry-run config tests) ---
+  See 05-idempotency-verification.txt and 06-startup-recovery-tests.txt:
+  normal start, repeated start, Floci-not-ready refusal, worker-stop recovery, Floci
+  interruption recovery, duplicate-consumer refusal, config-drift refusal, 7 invalid
+  configuration cases.
+
+Not done (by restriction): the production workers were NOT stopped/restarted to exercise the
+"start"/"create" path in production; those paths were exercised only on the isolated stack.
+Status: COMPLETED (implemented + verified; production verified non-disruptively).

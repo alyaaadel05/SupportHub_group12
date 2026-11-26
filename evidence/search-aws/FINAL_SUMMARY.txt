@@ -1,0 +1,154 @@
+SupportHub Group 12 - Search & Analytics AWS functionality - FINAL SUMMARY
+==========================================================================
+Date (UTC): 2026-11-26
+Branch: integration/group12-final (HEAD 4a323de, unchanged)
+Environment: ISOLATED stack only
+  Floci  : supporthub-iso-floci   http://localhost:4567 (127.0.0.1 only), IAM enforcement ON
+  DB     : supporthub-iso-postgres (alias "postgres" on supporthub-iso-net, no host port)
+  Search : supporthub-iso-search   127.0.0.1:3208  (image matches repo code; no rebuild)
+  Identity: supporthub-iso-identity 127.0.0.1:3206 (only for the editor/author login)
+Not used / not touched: main Floci :4566, Neon (prod/dev), production articles,
+real AWS, Cloudflare/Vercel, GitHub. Article/editorial/frontend/load-test
+iso containers were left stopped. Production/dev containers were not stopped.
+
+Search AWS completion: 15 / 15 (100%)
+  9 previously completed + 6 completed in this session.
+  Test totals this session: 94 PASS, 1 FAIL (emulator limitation), 1 LIMIT, 0 BLOCKED.
+
+--------------------------------------------------------------------------
+CHECKLIST - six remaining tasks
+--------------------------------------------------------------------------
+[x] 1. Dedicated IAM credential verification ........ 26 PASS / 0 FAIL / 1 LIMIT
+       - One active key for IAM user search-analytics-service; reused (no new key).
+       - Key ID in git-ignored search.aws.env == IAM active key == Search
+         container env (compared by SHA-256 prefix, never printed).
+       - sts get-caller-identity -> arn:aws:iam::000000000000:user/search-analytics-service
+       - ALLOW: DynamoDB Scan/UpdateItem on counters table, S3 Put/Get/List
+         under exports/, CloudWatch PutMetricData SupportHub/Search, Secrets
+         search/runtime + shared/{database,session}.
+       - DENY: DeleteTable, DeleteItem, PutItem, ListTables, S3 DeleteObject,
+         Put outside exports/, Put to article-backups, ListAllMyBuckets,
+         DeleteBucket, other components' secrets, ListSecrets, IAM ListUsers,
+         IAM CreateAccessKey, SQS ListQueues, forged access key.
+       - LIMIT: cloudwatch:namespace condition not implemented by Floci
+         (PutMetricData to another namespace is allowed in the emulator).
+       Evidence: 01-iam-credential-verification.txt
+
+[x] 2. DynamoDB live counter test ................... 17 PASS / 0 FAIL
+       - Isolation verified BEFORE starting services: supporthub/shared/database
+         DATABASE_URL -> host "postgres":5432/supporthub (no Neon); "postgres"
+         alias exists only on supporthub-iso-postgres; Search and Identity
+         containers are attached only to supporthub-iso-net and have no
+         DATABASE_URL in their env (loaded from isolated Secrets Manager).
+       - Genuine activity: 3x search "password", 2x search unique zero-result
+         term, 2x article view (article 226).
+       - DynamoDB: TERM#password 133 -> 136; new term searches=2/zeroResults=2;
+         ARTICLE#226 views 0 -> 2; PostgreSQL logged the same 5 searches.
+       - GET /api/analytics/live-counters: anonymous 401, author 403, editor 200
+         (no-store). All 10 terms and 10 articles returned equal the stored
+         DynamoDB values; top-10 ordering matches the scan.
+       Evidence: 02-dynamodb-live-counters.txt
+
+[x] 3. CSV export generation ........................ 9 PASS / 0 FAIL
+       - POST /api/analytics/exports as an editor (Identity login, allowed
+         Origin, X-CSRF-Token) -> 201
+         {name: analytics-20261126T035350Z.csv, bucket:
+          supporthub-search-analytics-exports, key: exports/..., bytes: 1914, rows: 40}
+       - Rejected: anonymous 401, author 403, missing CSRF 403, foreign Origin
+         403, wrong CSRF 403.
+       Evidence: 03-csv-export-generation.txt
+
+[x] 4. S3 object verification ....................... 12 PASS / 1 FAIL
+       - head-object (Search key): exists, key exports/analytics-20261126T035350Z.csv,
+         ContentLength 1914 (= API bytes), ContentType text/csv; charset=utf-8.
+       - Listed under exports/ with the same size; not present in another bucket.
+       - Restricted IAM on the object: GetObject ALLOW; DeleteObject DENY (object
+         still present), copy outside exports/ DENY, PutObjectAcl public-read
+         DENY, ListObjectsV2 without exports/ prefix DENY.
+       - FAIL: an UNSIGNED anonymous HTTP GET on the object returned 200.
+         Root cause: Floci 2.5.0 does not authenticate unsigned S3 requests on
+         ANY bucket (article-backups also 200), while unsigned DynamoDB and
+         Secrets Manager calls are 403. The bucket itself is private (Block
+         Public Access all true, no bucket policy, owner-only ACL), so real AWS
+         would return 403. Classified as EMULATOR LIMITATION; no Search code,
+         policy or bucket change required. Floci listens on 127.0.0.1 only.
+       Evidence: 04-s3-object-verification.txt (includes follow-up analysis)
+
+[x] 5. CSV download validation ...................... 30 PASS / 0 FAIL
+       - GET /api/analytics/exports (editor) lists the new export first.
+       - GET /api/analytics/exports/<name> (editor) -> 200, text/csv,
+         Content-Disposition attachment, Cache-Control no-store; body is
+         byte-identical to the S3 object.
+       - Header section,name,value,extra1,extra2; 40 records x 5 quoted fields
+         (= API rows); valid generated_at.
+       - Accuracy vs PostgreSQL: total_searches 436, successful 290,
+         zero-result 146, article views 54, votes 12 - all equal; success rate
+         66.51% consistent; popular_term rows equal DB top-10 (password=136);
+         values equal /api/analytics/overview; no formula-injection cells; no
+         personal data.
+       - Unauthorized: anonymous download/list 401, author download/list 403,
+         forged session cookie 401, path traversal 400, non-export object name
+         400, nonexistent export 404.
+       Evidence: 05-csv-download-validation.txt, 05-downloaded-export-sample.csv.txt
+
+[x] 6. Technical evidence saved ..................... done
+       - All files sanitized: no access keys, secret keys, passwords, session
+         cookies, CSRF tokens or DB URLs; demo emails masked. Verified by
+         comparing the real secret values against every evidence file (0 hits).
+
+--------------------------------------------------------------------------
+How the tests were run (commands)
+--------------------------------------------------------------------------
+- IAM: AWS CLI v2 (aws --endpoint-url http://localhost:4567 --region us-east-1 ...)
+  with the Search key exported from the git-ignored file; secret calls use
+  --query Name only.
+- Isolation: secretsmanager get-secret-value parsed locally (host/port/db only),
+  docker inspect (networks/aliases/env names), psql read-only counts via
+  docker exec supporthub-iso-postgres.
+- Services: docker start supporthub-iso-identity supporthub-iso-search (existing
+  containers, existing image), stopped again after testing.
+- API: Node fetch against 127.0.0.1:3206 (login) and 127.0.0.1:3208 (search,
+  analytics, exports) with Origin http://localhost:8188.
+- DynamoDB/S3 verification: dynamodb scan, s3api head-object/list-objects-v2/
+  get-object/delete-object/copy-object/put-object-acl with the Search key.
+- Helper scripts were kept in the session scratchpad (not in the repo).
+
+--------------------------------------------------------------------------
+Data created in the ISOLATED environment only
+--------------------------------------------------------------------------
+- S3 object exports/analytics-20261126T035350Z.csv; probe object
+  exports/iam-probe-search-aws.txt (not matched by the export name pattern).
+- DynamoDB: TERM#iam-probe-search-aws, TERM#searchaws20261126t035327z,
+  increments on TERM#password and ARTICLE#226.
+- PostgreSQL (isolated): 5 search_query_logs rows, 2 article_views rows,
+  login sessions in user_sessions.
+Nothing was deleted.
+
+--------------------------------------------------------------------------
+Files changed in the repository
+--------------------------------------------------------------------------
+Created (all untracked, under evidence/search-aws/):
+  evidence/search-aws/01-iam-credential-verification.txt
+  evidence/search-aws/02-dynamodb-live-counters.txt
+  evidence/search-aws/03-csv-export-generation.txt
+  evidence/search-aws/04-s3-object-verification.txt
+  evidence/search-aws/05-csv-download-validation.txt
+  evidence/search-aws/05-downloaded-export-sample.csv.txt
+  evidence/search-aws/FINAL_SUMMARY.txt
+Modified: none. No source code, config, IAM policy or infrastructure file changed.
+
+Git status at the end:  ?? evidence/search-aws/   (nothing else)
+No commits, pushes, merges, branch switches or pull requests were made.
+
+--------------------------------------------------------------------------
+Remaining blockers / notes
+--------------------------------------------------------------------------
+- None blocking. Two emulator limitations (not fixable in Search code):
+  1. Floci does not enforce the cloudwatch:namespace condition key.
+  2. Floci serves unsigned S3 GETs regardless of bucket privacy settings.
+  Both behave correctly on real AWS with the existing policy/bucket settings;
+  confirming that would require real AWS, which was out of scope.
+- Session interruption: the first end-to-end run was cut off when the editor
+  window closed, and the next attempt failed at its first AWS CLI call
+  (AWS_PROFILE set to an empty string) before any API activity. The successful
+  run took its own fresh baseline, so the counter deltas above are exact.
