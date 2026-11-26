@@ -1,0 +1,5 @@
+Live AWS E2E 2026-11-26T21:57:56.079Z via https://supporthub-group12.pages.dev (author al***@gmail.com, editor al***@gmail.com)
+FAIL | Article (Alyaa) | S3 backup export (PutObject) | POST /api/articles/23/versions/32/export -> 503 | no object found
+FAIL | Article (Alyaa) | S3 backup read-back (GetObject) | GET /api/articles/23/versions/32/export -> 503 | {"error":"Required cloud service temporarily unavailable"}
+FAIL | Article (Alyaa) | Secrets Manager runtime config (GetSecretValue) | (inside the backup export) -> 503 | export failed: {"error":"Required cloud service temporarily unavailable"}
+Total: 0 passed, 3 failed (backup-only re-run on article 23)

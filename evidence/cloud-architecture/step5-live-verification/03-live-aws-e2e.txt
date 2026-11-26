@@ -1,0 +1,19 @@
+Live AWS E2E 2026-11-26T21:53:40.827Z via https://supporthub-group12.pages.dev (author al***@gmail.com, editor al***@gmail.com)
+created article 23 (HTTP 201)
+FAIL | Article (Alyaa) | S3 backup export (PutObject) | POST /api/articles/23/versions/32/export -> 503 | no object found
+FAIL | Article (Alyaa) | S3 backup read-back (GetObject) | GET /api/articles/23/versions/32/export -> 503 | {"error":"Required cloud service temporarily unavailable"}
+FAIL | Article (Alyaa) | Secrets Manager runtime config (GetSecretValue) | (inside the backup export) -> 503 | export failed: {"error":"Required cloud service temporarily unavailable"}
+PASS | Article (Alyaa) | SQS SendMessage via outbox (ECS article-outbox-worker) | POST /api/articles/23/submit -> 200 | article_event_outbox 685b34fa-795a-4691-8502-3efdc4256b89 status=published at 2026-11-26T21:53:55.320Z
+PASS | Editorial (Salma) | SQS ReceiveMessage/DeleteMessage (ECS editorial-article-consumer) | (async, from the submit above) -> - | editorial_event_inbox 685b34fa-795a-4691-8502-3efdc4256b89 at 2026-11-26T21:53:57.303Z; review 4 pending; queue now 0/0
+editor login HTTP 200, role editor
+approve HTTP 201, publish HTTP 200 (published)
+PASS | Editorial (Salma) | SNS Publish (ECS editorial-publication-worker) | PATCH /api/articles/23/publication -> 200 | editorial_publication_event_outbox 3e17822c-feb9-4c22-a0d0-c42b4a17b1d4 state=published attempts=1 at 2026-11-26T21:54:18.070Z
+PASS | Editorial (Salma) | Lambda invoke via SNS -> receipt in Neon | (async, from the publish above) -> - | 1 receipt(s): 3e17822c-feb9-4c22-a0d0-c42b4a17b1d4 editorial.publication.published at 2026-11-26T21:54:19.959Z; matches SNS event: true
+search index: article 23 indexed at 2026-11-26T21:54:19.534Z
+PASS | Search (Nermeen) | DynamoDB UpdateItem search counter (flushed in-request) | GET /api/public/articles?q=liveawsmwy3afvl -> 200 | supporthub-search-counters TERM#liveawsmwy3afvl = {"searches":"1","zeroResults":"0","updatedAt":"2026-11-26T21:54:23.609Z"}; results=1
+PASS | Search (Nermeen) | DynamoDB UpdateItem article view counter | GET /api/public/articles/23 -> 200 | ARTICLE#23 = {"views":"1","updatedAt":"2026-11-26T21:54:27.808Z"}
+PASS | Search (Nermeen) | CloudWatch PutMetricData (Searches) | GET /api/public/articles?q=liveawsmwy3afvl -> 200 | SupportHub/Search Searches, last 5 min: 1 datapoint(s), Sum 1
+PASS | Search (Nermeen) | S3 CSV export (PutObject + download) | POST /api/analytics/exports -> 201 | s3://supporthub-search-analytics-exports/exports/analytics-20261126T215433Z.csv 1554 B 2026-11-26T21:54:34+00:00; download HTTP 200
+PASS | Identity (Alyaa) | SNS Publish security alert (in-request on Vercel) | POST /api/auth/login (unknown address) -> 401 | topic supporthub-identity-security-alerts event=authentication_failed SNS at 2026-11-26T21:54:45.798Z (-288 ms after the response)
+Total: 9 passed, 3 failed
+verification article: 23 ("Live AWS verification liveawsmwy3afvl")
