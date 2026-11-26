@@ -3,6 +3,14 @@ SupportHub Group 12 - 06 Unified architecture (instructor clarification)
 Date (UTC) 2026-11-26 ; hosting investigation (Oracle/Google) PAUSED on request; no account,
 no paid resource, no commit, no production change.
 
+UPDATE 2026-11-26 (added after Step 1): the main-Floci findings in sections 1 and 2 below
+(published on 0.0.0.0:4566, no Docker socket, no Lambda, no ECS) describe the state BEFORE
+Step 1. Step 1 recreated the main Floci: port 4566 is now bound to 127.0.0.1 only (LAN and
+Tailscale unreachable, finding S1 resolved), the Docker socket is mounted, and the Lambda and
+ECS cluster exist. See step1-floci-recreation/STEP1-REPORT.txt sections 3 and 6.
+Remote host: NOT REQUIRED. Floci runs on the host machine and is started by
+infra/floci/start-supporthub.sh; the paused Oracle/Google investigation is closed.
+
 TARGET (one consistent application)
   Frontend : Cloudflare Pages (unchanged)            - only production frontend
   APIs     : 4 Vercel projects (unchanged)           - ONLY production API deployment

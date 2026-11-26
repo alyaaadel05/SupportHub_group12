@@ -1,0 +1,24 @@
+SupportHub Group 12 - Step 4 preparation: cutover script review, safety tests, image freshness
+==========================================================================
+Date (UTC) 2026-11-26 ~20:05. Read-only except the local image rebuild noted below.
+
+1. cutover.sh review (Alyaa's hardening + additions)
+   Kept (Alyaa): fail-closed rollback (no legacy restart if ECS scale-down fails or ECS tasks remain;
+   wait_ecs_zero checks desired/running/pending = 0 and no RUNNING tasks); no automatic legacy
+   restart after a failed/partial scale-up; abort if stopping either legacy worker fails; delayed
+   messages count as not drained.
+   Added: (a) PRE-CHECK before any legacy worker is stopped: ECS must be verifiably 0/0/0 with no
+   running tasks, both legacy workers must be running, both ECS images must exist - otherwise exit 3
+   with no change; (b) READINESS after scale-up: all three services running 1 / pending 0 AND three
+   worker containers on floci_default that logged their start-up line, bounded 120 s; on failure
+   exit 1 without restarting legacy workers (operator decides --rollback).
+2. Mocked behaviour suite tests/integration/ecs-cutover-behaviour-check.sh: 14/14 PASS
+   (10 original scenarios + cutover_ok, precheck_active_ecs, image_missing, not_ready).
+   Mocks extended for docker image/ps/logs and the readiness query; checks were not weakened.
+3. ECS image freshness (sha256 of worker files inside the image vs source):
+   supporthub-prod-article:local - start.js, config/secrets.js, articleOutboxScheduler.js,
+     articleOutboxWorker.js: all SAME.
+   supporthub-prod-editorial:local - all SAME except services/publicationEventService.js (source adds
+     requeueFailed). Rebuilt from the reviewed source: new image 593ae7faf196 (file now identical);
+     .env / .env.local absent in the image (.dockerignore); legacy editorial container stays on its
+     original image ff0539824c14, so rollback is unaffected.

@@ -1,0 +1,23 @@
+SupportHub Group 12 - Step 5 live findings on the CURRENTLY deployed code (dde191c)
+==========================================================================
+1. Search -> DynamoDB through Vercel -> Worker gateway -> tunnel -> Floci (2026-11-26 ~17:10 UTC)
+   public search term gwcheck171828 via https://supporthub-group12.pages.dev/api/public/articles?q=
+   -> NOT in supporthub-search-counters after 40 s; after 3 more searches (gwcheck171828b) both
+   TERM#gwcheck171828 = 1 and TERM#gwcheck171828b = 2 appeared.
+   PASS (path works) / DEFECT: counters/metrics are flushed by setInterval, which only runs while a
+   Vercel instance is thawed by a LATER request -> delayed or lost.
+   Fix (local, not deployed): searchService.flushOnServerless() - on Vercel flush before the
+   response, bounded 1.5 s; unit tests 3/3; Search suite 113/113.
+2. Identity SNS security alert through Vercel -> gateway -> Floci (17:21-17:22 UTC)
+   temporary SQS subscription supporthub-identity-alerts-audit on supporthub-identity-security-alerts;
+   one rejected login via Pages (403, CSRF) at 17:21:50.569Z -> nothing in 20 s; a later unrelated
+   GET thawed the instance and the alert arrived: SNS Timestamp 17:22:31.920Z,
+   {"service":"identity-service","event":"access_denied",...} (41 s late, no user data in it).
+   PASS (path works) / DEFECT: published on res 'finish' which runs after Vercel freezes the function.
+   Fix (local, not deployed): on Vercel publish just before res.end, bounded 1.5 s, never fails the
+   request; Docker keeps after-response publish. Identity suite 35/35 (3 new tests).
+   The audit subscription is kept until the post-deploy re-test, then unsubscribed.
+3. Editorial Lambda CloudWatch Logs: log group /aws/lambda/supporthub-editorial-publication-outcome,
+   stream 2026/11/26/[$LATEST]399fca1a created 20:09:37Z = the Article 21 SNS-triggered invocation
+   (receipt processed_at 20:09:39Z) but contains no lines: the handler logs nothing on success.
+   PARTIAL. Proposed (needs approval): one structured success log line (event id, article id, outcome).

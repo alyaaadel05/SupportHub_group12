@@ -1,0 +1,26 @@
+== Read-only status (2026-11-26T20:06:20Z)
+  laptop supporthub-prod-article-outbox-worker: running ; supporthub-prod-editorial-article-worker: running
+  laptop queue supporthub-article-events-production visible/in-flight/delayed: 0/0/0 ; DLQ: 0/0/0
+  production outboxes (read-only, restricted roles):
+    editorial tables present: ["editorial_event_inbox","editorial_publication_event_outbox","editorial_publication_event_receipts","publication_outbox"]
+    editorial_publication_event_outbox by state: [{"state":"pending","n":1,"oldest":"2026-11-25T23:52:32.822Z"}]
+    editorial_publication_event_receipts: {"n":0}
+    publication_outbox (Editorial -> Search) by state: [{"state":"delivered","n":1}]
+    editorial_event_inbox: {"n":2,"last":"2026-11-25T23:50:47.840Z"}
+    article_event_outbox by status: [{"status":"published","n":16,"oldest":"2026-11-19T14:10:17.635Z"}]
+  remote ECS services:
+    == ECS cluster supporthub-workers on http://127.0.0.1:4566
+      article-outbox-worker	ACTIVE	0	0	arn:aws:ecs:us-east-1:000000000000:task-definition/supporthub-article-outbox-worker:1
+      editorial-article-consumer	ACTIVE	0	0	arn:aws:ecs:us-east-1:000000000000:task-definition/supporthub-editorial-article-consumer:1
+      editorial-publication-worker	ACTIVE	0	0	arn:aws:ecs:us-east-1:000000000000:task-definition/supporthub-editorial-publication-worker:1
+    container floci-aws-ecs-3ebb08c94e4c4180b107cd5c2c015050-editorial-article-consumer Up 4 hours
+    container floci-aws-ecs-95489a0259f74c63a761e69b1660817d-article-outbox-worker Up 4 hours
+    container floci-aws-ecs-853f284d87514c7f8a48dea32703bfc7-editorial-publication-worker Up 4 hours
+== CUTOVER (approved)
+  [1/4] remote verification passed
+        pre-check: ECS 0/0/0 with no running tasks, both legacy workers running, ECS images present
+  [2/4] laptop article outbox worker stopped (new events stay pending in Neon)
+  [3/4] laptop queue drained (0/0/0); DLQ 0/0/0 stays on the laptop for review
+        laptop editorial consumer stopped
+  [4/4] remote ECS workers scaled to 1
+  READINESS FAILED (services: 1:0 1:0 1:0 , started containers: 3). Legacy workers remain stopped; check ECS, then --rollback.
