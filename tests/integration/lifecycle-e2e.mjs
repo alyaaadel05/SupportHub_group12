@@ -245,7 +245,7 @@ check("S3 analytics CSV export (Search -> own bucket)", r.status === 201 || r.st
 
 // ---------------------------------------------------------------- reject path + flags + history
 log("\n== 7. Rejection path, editorial history, outdated flag");
-r = await author.req("POST", "/api/articles", { body: { title: `Printer offline ${token}`, content: "Restart the printer and check the cable. " + token, categoryId } });
+r = await author.req("POST", "/api/articles", { body: { title: `Printer offline ${token}`, content: "Restart the printer, check the USB or network cable, then clear the print queue and try a test page again. " + token, categoryId } });
 const rejectId = r.data.article?.id;
 await author.req("POST", `/api/articles/${rejectId}/submit`);
 const queued2 = await poll(async () => (await editor.req("GET", "/api/reviews?status=pending")).data.reviews?.find(x => Number(x.article_id) === Number(rejectId)), 60000);
