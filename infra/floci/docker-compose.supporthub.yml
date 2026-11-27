@@ -169,6 +169,13 @@ services:
       ARTICLE_SERVICE_URL: http://article:3001
       SEARCH_SERVICE_URL: http://search:3004
     ports: ["127.0.0.1:${SUPPORTHUB_PORT_BASE:-310}7:3002"]
+    # Healthy = API up and database reachable (scripts/healthcheck.js).
+    healthcheck:
+      test: ["CMD", "node", "scripts/healthcheck.js"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     depends_on:
       postgres: { condition: service_healthy }
 
@@ -187,7 +194,7 @@ services:
       SQS_WAIT_TIME_SECONDS: "5"
       SQS_VISIBILITY_TIMEOUT: "30"
     depends_on:
-      editorial: { condition: service_started }
+      editorial: { condition: service_healthy }
 
   editorial-publication-worker:
     <<: *service-common
@@ -201,7 +208,7 @@ services:
       SNS_ENDPOINT_URL: http://floci:4566
       EDITORIAL_PUBLICATION_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:supporthub-editorial-publication-events
     depends_on:
-      editorial: { condition: service_started }
+      editorial: { condition: service_healthy }
 
   search:
     <<: *service-common
