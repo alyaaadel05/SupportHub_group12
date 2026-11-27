@@ -723,46 +723,55 @@ async function initializeEditor() {
 // 8. EDITORIAL REVIEW QUEUE
 // ==========================================
 
+// Turns Editorial API errors into clear messages for editors.
+// The backend still makes every decision; this only explains the result.
+function friendlyEditorialError(status, serverMessage) {
+  const detail = serverMessage ? " (" + serverMessage + ")" : "";
+
+  switch (status) {
+    case 400:
+      return "Invalid input" + detail + ". Please check and try again.";
+    case 401:
+      return "Your session has expired. Please log in again.";
+    case 403:
+      return "You are not allowed to do this" + detail + ".";
+    case 404:
+      return "This article no longer exists. The list has been refreshed.";
+    case 409:
+      return "This article was already handled or has changed" + detail +
+        ". The list has been refreshed.";
+    case 429:
+      return "Too many requests. Please wait a moment and try again.";
+    case 502:
+    case 503:
+    case 504:
+      return "A required service is temporarily unavailable. Please try again in a minute.";
+    default:
+      return serverMessage || "Editorial request failed (HTTP " + status + ").";
+  }
+}
+
+// 404 or 409 means the list on screen is out of date (deleted article,
+// or another editor already decided), so reload it.
+function isStaleReviewError(error) {
+  return error && (error.status === 404 || error.status === 409);
+}
+
+async function refreshReviewPage() {
+  await loadReviewQueue();
+  await loadApprovedReviews();
+  await loadPublishedArticles();
+}
+
+// Comment limit matches the Editorial backend (services/http.js, 2000 characters).
+const MAX_EDITORIAL_COMMENT = 2000;
+
 async function submitEditorialDecision(articleId, decision, comments) {
-  const tokenResponse = await fetch("/api/csrf-token", {
-    credentials: "include",
-    cache: "no-store"
-  });
-
-  if (!tokenResponse.ok) {
-    throw new Error("Could not obtain Editorial CSRF token.");
-  }
-
-  const tokenData = await tokenResponse.json();
-
-  if (!/^[a-f0-9]{64}$/i.test(tokenData.csrfToken || "")) {
-    throw new Error("Invalid Editorial CSRF token.");
-  }
-
-  const response = await fetch(
+  return editorialWrite(
     "/api/articles/" + encodeURIComponent(articleId) + "/reviews",
-    {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRF-Token": tokenData.csrfToken
-      },
-      body: JSON.stringify({ decision, comments })
-    }
+    "POST",
+    { decision, comments }
   );
-
-  const result = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(
-      result.error ||
-      result.message ||
-      "Editorial request failed (HTTP " + response.status + ")."
-    );
-  }
-
-  return result;
 }
 
 async function loadReviewQueue() {
@@ -818,11 +827,13 @@ async function loadReviewQueue() {
 
         showMessage("review-message", "Review " + decision + ".");
 
-        await loadReviewQueue();
-        await loadApprovedReviews();
-        await loadPublishedArticles();
+        await refreshReviewPage();
       } catch (error) {
         showMessage("review-message", error.message);
+
+        if (isStaleReviewError(error)) {
+          await refreshReviewPage();
+        }
       } finally {
         busy = false;
         approveButton.disabled = false;
@@ -831,15 +842,44 @@ async function loadReviewQueue() {
     }
 
     const approveButton = actionButton("Approve", async () => {
-      if (!window.confirm("Approve Article " + articleId + "?")) return;
+      const comment = window.prompt(
+        "Approve Article " + articleId + "? Optional comment for the author:",
+        "Approved after editorial review."
+      );
 
-      await decide("approved", "Approved after editorial review.");
+      if (comment === null) return; // Cancel pressed
+
+      if (comment.trim().length > MAX_EDITORIAL_COMMENT) {
+        showMessage(
+          "review-message",
+          "Comments must be " + MAX_EDITORIAL_COMMENT + " characters or fewer."
+        );
+        return;
+      }
+
+      await decide("approved", comment.trim());
     });
 
     const rejectButton = actionButton("Reject", async () => {
-      const comment = window.prompt("Reason for rejection:");
+      const comment = window.prompt("Reason for rejection (required):");
 
-      if (!comment || !comment.trim()) return;
+      if (comment === null) return; // Cancel pressed
+
+      if (!comment.trim()) {
+        showMessage(
+          "review-message",
+          "A rejection reason is required. Article " + articleId + " was not rejected."
+        );
+        return;
+      }
+
+      if (comment.trim().length > MAX_EDITORIAL_COMMENT) {
+        showMessage(
+          "review-message",
+          "The rejection reason must be " + MAX_EDITORIAL_COMMENT + " characters or fewer."
+        );
+        return;
+      }
 
       await decide("rejected", comment.trim());
     }, "danger");
@@ -883,11 +923,14 @@ async function editorialWrite(path, method, body) {
   const result = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw Error(
-      result.error ||
-      result.message ||
-      "Editorial request failed: HTTP " + response.status
+    const error = new Error(
+      friendlyEditorialError(
+        response.status,
+        result.error || result.message
+      )
     );
+    error.status = response.status;
+    throw error;
   }
 
   return result;
@@ -940,7 +983,7 @@ async function loadApprovedReviews() {
     const button = actionButton("Publish", async () => {
       const confirmed = window.confirm(
         "Publish Article " + articleId +
-        "? Only continue after Salma confirms the publication pipeline is ready."
+        "? It will become public and searchable."
       );
 
       if (!confirmed) return;
@@ -962,11 +1005,13 @@ async function loadApprovedReviews() {
           "Article " + articleId + " published successfully."
         );
 
-        await loadReviewQueue();
-        await loadApprovedReviews();
-        await loadPublishedArticles();
+        await refreshReviewPage();
       } catch (error) {
         showMessage("review-message", error.message);
+
+        if (isStaleReviewError(error)) {
+          await refreshReviewPage();
+        }
       } finally {
         button.disabled = false;
       }
