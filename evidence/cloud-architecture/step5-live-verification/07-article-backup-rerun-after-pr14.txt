@@ -1,0 +1,43 @@
+Live AWS E2E 2026-11-27T01:00:25.589Z via https://supporthub-group12.pages.dev (author al***@gmail.com, editor al***@gmail.com)
+FAIL | Article (Alyaa) | S3 backup export (PutObject) | POST /api/articles/23/versions/32/export -> 503 | no object found
+FAIL | Article (Alyaa) | S3 backup read-back (GetObject) | GET /api/articles/23/versions/32/export -> 503 | {"error":"Required cloud service temporarily unavailable"}
+FAIL | Article (Alyaa) | Secrets Manager runtime config (GetSecretValue) | (inside the backup export) -> 503 | export failed: {"error":"Required cloud service temporarily unavailable"}
+Total: 0 passed, 3 failed (backup-only re-run on article 23)
+
+==========================================================================
+DIAGNOSIS (Alyaa, AI-assisted; read-only, nothing changed, no value printed)
+==========================================================================
+Deployed code: origin/main f6649c0 contains PR #14 (withFlociAccess on the Secrets Manager client).
+
+1. Nermeen's 503 at ~00:05 UTC: the tunnel was DOWN.
+   cloudflared: first error 23:59:39Z ("failed to accept QUIC stream: timeout"), 50 ERR in
+   23:50-00:20 ("failed to dial to edge with quic: timeout"), first connection re-registered
+   00:05:48Z, all four by 00:08:08Z. Floci: 43 "DNS forwarding failed ... Receive timed out" between
+   23:59:44 and 00:04:40. Floci and cloudflared containers stayed running (host network loss).
+2. Re-run 01:00:25Z (above): still 503 x3 with the tunnel UP -> a second, independent cause.
+3. Where it fails:
+   - Floci logs every Secrets Manager call ("AwsJson11Controller secretsmanager action:
+     GetSecretValue"). Since 21:00 only 21:55:40, 01:00:49, 01:01:00 - all local probes. The
+     deployed Article API's GetSecretValue has NEVER reached Floci.
+   - Local probe with the REAL module, generated Vercel Article key + gateway token, live gateway:
+     getArticleRuntimeConfig OK; runtime-config feature=article-backup enabled=true.
+   - wrangler tail of supporthub-floci-gateway (output filtered: method/path/status and
+     SHA-256 / boolean comparisons only; no header value printed or saved), during re-runs
+     01:02Z and 01:05Z:
+       POST / secretsmanager.GetSecretValue                  token-id MISMATCH -> 403
+       GET /supporthub-article-backups/articles/23/versions/32.json token-id MISMATCH -> 403
+       POST / DynamoDB_20120810.UpdateItem (Search, same window)    token-id MATCH -> 200
+       POST / GraniteServiceVersion20100801.PutMetricData (Search)  token-id MATCH -> 200
+     Classification of the Article cf-access-client-id value: equals the gateway token SECRET
+     (64 chars; expected ID is 40 chars); no whitespace, no quotes.
+   => Not the bucket (AWS_S3_BUCKET is set: path shows supporthub-article-backups), not Floci IAM,
+      not a gateway key/service rule (Article rule s3|secretsmanager never evaluated): the gateway
+      token check fails ("Forbidden" 403) because Vercel Article's FLOCI_ACCESS_CLIENT_ID holds the
+      secret value. S3 and Secrets Manager 403 -> service maps to 503.
+MINIMAL FIX (Vercel dashboard, Article project, Production env - needs Alyaa's approval + redeploy):
+   FLOCI_ACCESS_CLIENT_ID     = value of FLOCI_ACCESS_CLIENT_ID in
+                                infra/floci/.generated/production/gateway.env (40 chars)
+   FLOCI_ACCESS_CLIENT_SECRET = value of FLOCI_ACCESS_CLIENT_SECRET in the same file (64 chars)
+   (the secret header is redacted by wrangler tail, so its value could not be compared - re-check it)
+   Then redeploy Article and re-run: BACKUP_ONLY_ARTICLE=23 node tests/integration/production-live-aws-e2e.mjs
+No code change is needed.

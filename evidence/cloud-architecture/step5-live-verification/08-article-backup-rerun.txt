@@ -1,0 +1,15 @@
+Live AWS E2E 2026-11-27T13:21:10.228Z via https://supporthub-group12.pages.dev (author al***@gmail.com, editor al***@gmail.com)
+FAIL | Article (Alyaa) | S3 backup export (PutObject) | POST /api/articles/23/versions/32/export -> 503 | no object found
+FAIL | Article (Alyaa) | S3 backup read-back (GetObject) | GET /api/articles/23/versions/32/export -> 503 | {"error":"Required cloud service temporarily unavailable"}
+FAIL | Article (Alyaa) | Secrets Manager runtime config (GetSecretValue) | (inside the backup export) -> 503 | export failed: {"error":"Required cloud service temporarily unavailable"}
+Total: 0 passed, 3 failed (backup-only re-run on article 23)
+
+Context (read-only, 2026-11-27 ~13:20 UTC): Floci running/healthy, cloudflared running; a short tunnel
+drop 13:15:16-13:16:31 (24 ERR), all connections re-registered by 13:16:59 - tunnel UP during this run
+(public search through gateway+tunnel HTTP 200).
+Gateway (wrangler tail, filtered to booleans; no value printed or saved):
+  13:21:16.920Z secretsmanager.GetSecretValue        token-id MISMATCH (holds the token secret) -> 403
+  13:21:21.667Z /supporthub-article-backups/articles/23/versions/32.json  token-id MISMATCH -> 403
+Cause unchanged from 07-article-backup-rerun-after-pr14.txt: the Vercel Article project's
+FLOCI_ACCESS_CLIENT_ID holds the gateway token SECRET; the gateway token check refuses before any
+per-key rule, Secrets Manager or S3. Bucket config and code are correct. Fix = Vercel env var (pending).

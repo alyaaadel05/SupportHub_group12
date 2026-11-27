@@ -1,0 +1,36 @@
+Article feature B - isolated stack 2026-11-27T14:40:58Z (supporthub-iso-floci, IAM enforcement on)
+1. BEFORE policy (isolated Article key, user supporthub-article-service):
+   PutMetricData SupportHub/Article -> AccessDeniedException) when calling the PutMetricData operation
+2. Policy infra/iam/article-cloudwatch-metrics-policy.json attached as inline SupportHubArticleCloudWatchMetrics (ISOLATED Floci only)
+   PutMetricData SupportHub/Article -> AccessDeniedException
+   PutMetricData SupportHub/Search  -> AccessDeniedException   (namespace condition)
+   -> Floci 2.5.0 does not evaluate the cloudwatch:namespace condition key: a statement with it is
+      treated as deny even for the matching namespace. Verified with the same policy WITHOUT the
+      condition (isolated only):
+   PutMetricData SupportHub/Article -> ALLOWED
+   PutMetricData SupportHub/Search  -> ALLOWED (namespace cannot be restricted on Floci)
+   cloudwatch:ListMetrics           -> DENIED  (only PutMetricData is granted)
+   Policy file therefore = PutMetricData only, Resource "*" (CloudWatch PutMetricData has no
+   resource-level ARNs). On real AWS add Condition StringEquals cloudwatch:namespace=SupportHub/Article.
+   The service only writes the namespace from CLOUDWATCH_NAMESPACE (SupportHub/Article).
+
+3. Real Article API (temporary container, CLOUDWATCH_NAMESPACE=SupportHub/Article, VERCEL=1):
+Article metrics check 2026-11-27T14:43:47.195Z - temporary Article http://127.0.0.1:3299, isolated Floci http://localhost:4567
+metrics before: {"ArticlesCreated":0,"ArticlesSubmitted":0,"BackupsExported":0,"BackupFailures":0}
+PASS | author login (isolated proxy)
+PASS | author2 login
+PASS | create -> 201 | article 256
+PASS | submit -> 200 | 200
+PASS | second submit -> 409 (must NOT count) | 409
+PASS | backup export -> 200 | 200 articles/257/versions/404.json
+PASS | export by another author -> 403 (must NOT count as BackupFailure) | 403
+PASS | export while backups disabled -> 503 (counts as BackupFailure) | 503
+PASS | isolated runtime-config restored to enabled=true
+metrics after:  {"ArticlesCreated":2,"ArticlesSubmitted":1,"BackupsExported":1,"BackupFailures":1}
+PASS | ArticlesCreated +2 | 2
+PASS | ArticlesSubmitted +1 (409 not counted) | 1
+PASS | BackupsExported +1 | 1
+PASS | BackupFailures +1 (403 not counted) | 1
+Total: 13 passed, 0 failed
+production gateway, Article key, service monitoring -> HTTP 403 "Service not allowed for this key"
+production gateway, Article key, service s3         -> HTTP 400 (passes the rule; Floci then rejects the fake signature)
