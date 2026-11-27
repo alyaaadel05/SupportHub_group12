@@ -25,11 +25,22 @@ POST   /articles/:id/view
 POST   /articles/:id/feedback
 
 ## Editorial Workflow
-GET  /editorial/queue
-GET  /editorial/published
-POST /editorial/:id/approve
-POST /editorial/:id/reject
-POST /editorial/:id/flag
+GET   /reviews?status=pending|approved|rejected        (reviewer)
+POST  /articles/:id/submissions                         (author, own draft)
+POST  /articles/:id/reviews        {decision, comments}  (reviewer, not own article)
+GET   /articles/:id/history                             (reviewer)
+GET   /editorial/published                              (reviewer)
+PATCH /articles/:id/publication                         (reviewer, approved articles only)
+GET   /editorial/flags?limit=&offset=                   (reviewer)
+POST  /articles/:id/flags          {reason}             (reviewer, published articles only)
+PATCH /flags/:id                   {resolution}         (reviewer, not own article)
+GET   /csrf-token                                       (logged in)
+
+Internal (not under /api, no browser access):
+POST  /internal/auto-flags         signed by Search Service (HMAC)
+POST  /internal/retry-notifications, /internal/retry-publication-events   (cron secret)
+
+Full list with validation and status codes: docs/final/report-drafts/08-api-list-and-data-model.md
 
 ## Analytics
 GET /analytics/summary
@@ -62,10 +73,15 @@ POST /api/articles/1/submit
 Requires article ownership and an eligible status.
 
 ## Example: Approve Article
-POST /api/editorial/1/approve
+POST /api/articles/1/reviews
 
-Requires editor or admin role.
-An editor cannot approve their own article.
+{
+  "decision": "approved",
+  "comments": "Clear steps, approved."
+}
+
+Requires reviewer, editor or admin role and a CSRF token.
+An editor cannot review their own article (403); a second decision returns 409.
 
 ## Example: Feedback
 POST /api/articles/1/feedback

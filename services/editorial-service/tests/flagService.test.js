@@ -1,5 +1,8 @@
 "use strict";
 
+// db/pool.js requires a URL at load time; these tests never connect.
+process.env.DATABASE_URL ||= "postgresql://test:test@127.0.0.1:1/editorial_test";
+
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { HttpError } = require("../services/http");
