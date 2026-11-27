@@ -121,7 +121,41 @@ async function retrieveVersion(pool, articleId, versionId, user) {
   }
 }
 
+// Restore a draft from its S3 backup (not from the database copy).
+// retrieveVersion() already enforces ownership (403) and returns 404 when
+// no backup exists; the stored document is validated before it is used.
+async function restoreFromBackup(pool, articleId, versionId, user) {
+  const backup = await retrieveVersion(pool, articleId, versionId, user);
+  const v = backup && backup.version;
+
+  const valid =
+    Number(backup?.articleId) === Number(articleId) &&
+    Number(backup?.versionId) === Number(versionId) &&
+    v &&
+    typeof v.title === "string" && v.title.trim() &&
+    typeof v.content === "string" && v.content.trim() &&
+    v.category_id !== undefined;
+
+  if (!valid) {
+    throw httpError(502, "Stored article backup is invalid");
+  }
+
+  const article = await versionService.restoreFromSnapshot(
+    pool,
+    articleId,
+    {
+      title: v.title,
+      content: v.content,
+      category_id: v.category_id
+    },
+    user
+  );
+
+  return { article, restoredFrom: objectKey(articleId, versionId) };
+}
+
 module.exports = {
   exportVersion,
-  retrieveVersion
+  retrieveVersion,
+  restoreFromBackup
 };

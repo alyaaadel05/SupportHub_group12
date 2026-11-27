@@ -1,0 +1,17 @@
+Article backup-restore check 2026-11-27T13:29:44.798Z - isolated http://localhost:8188
+PASS | author login
+PASS | author creates a draft | article 252
+PASS | backup of version 1 exported to S3 | 200 articles/252/versions/396.json
+PASS | draft edited (creates version 2) | 200
+PASS | author2 login
+PASS | another author -> 403 | 403 Forbidden
+PASS | editor login
+PASS | editor -> 403 (authors only) | 403
+PASS | admin login
+PASS | admin -> 403 (authors only) | 403
+PASS | version without a backup -> 404 | 404 Article backup not found
+PASS | rejected attempts changed nothing
+PASS | owner restores from the S3 backup -> 200 | 200 articles/252/versions/396.json
+PASS | article title/content are the backed-up version
+PASS | a new version history entry was added
+Total: 15 passed, 0 failed

@@ -338,6 +338,38 @@ async function mine(user) {
 // WITH TRANSACTIONAL SQS OUTBOX
 // ==========================================
 
+// ==========================================
+// SUBMISSION QUALITY RULES (before review)
+// ==========================================
+
+const SUBMIT_MIN_CONTENT_LENGTH = 100;
+
+// Returns a list of clear, user-facing problems (empty = ready for review).
+function submissionIssues(draft, duplicateTitle) {
+  const issues = [];
+  const length = String(draft?.content || "").trim().length;
+
+  if (length < SUBMIT_MIN_CONTENT_LENGTH) {
+    issues.push(
+      `Content must be at least ${SUBMIT_MIN_CONTENT_LENGTH} characters ` +
+      `before it can be submitted for review (currently ${length}).`
+    );
+  }
+
+  if (draft?.category_id == null || draft?.category_found == null) {
+    issues.push("A valid category is required before submitting for review.");
+  }
+
+  if (duplicateTitle) {
+    issues.push(
+      "Another article already uses this title. " +
+      "Choose a different title before submitting for review."
+    );
+  }
+
+  return issues;
+}
+
 async function transitionStatus(id, from, to, user) {
   id = validId(id);
 
@@ -383,6 +415,49 @@ async function transitionStatus(id, from, to, user) {
 
   try {
     await client.query("BEGIN");
+
+    // Submission quality rules (draft -> in_review only). The row is locked
+    // first so the checked title/content are exactly what gets submitted.
+    if (from === "draft" && to === "in_review") {
+      const locked = await client.query(
+        `SELECT a.id, a.title, a.content, a.category_id,
+                c.id AS category_found
+         FROM articles a
+         LEFT JOIN categories c ON c.id = a.category_id
+         WHERE a.id = $1
+           AND a.status = $2
+           AND ($3::varchar = 'admin' OR a.author_id = $4)
+         FOR UPDATE OF a`,
+        [id, from, user.role, Number(user.id)]
+      );
+
+      const draft = locked.rows[0];
+
+      if (!draft) {
+        // Not found, not owned or not a draft: same 409 path as before.
+        await client.query("ROLLBACK");
+        return null;
+      }
+
+      const duplicate = await client.query(
+        `SELECT 1
+         FROM articles
+         WHERE id <> $1
+           AND lower(regexp_replace(btrim(title), '\\s+', ' ', 'g'))
+             = lower(regexp_replace(btrim($2), '\\s+', ' ', 'g'))
+         LIMIT 1`,
+        [id, draft.title]
+      );
+
+      const issues = submissionIssues(draft, duplicate.rows.length > 0);
+
+      if (issues.length) {
+        await client.query("ROLLBACK");
+        const error = httpError(422, issues.join(" "));
+        error.issues = issues;
+        throw error;
+      }
+    }
 
     // Check status and ownership atomically.
     const result = await client.query(
@@ -618,5 +693,7 @@ module.exports = {
   remove,
   mine,
   transitionStatus,
-  transitionEditorialStatus
+  transitionEditorialStatus,
+  submissionIssues,
+  SUBMIT_MIN_CONTENT_LENGTH
 };

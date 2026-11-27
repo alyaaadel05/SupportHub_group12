@@ -1,0 +1,42 @@
+PASS | Article key, monitoring     expected passes rule -> HTTP 400 passed rule (Floci rejects fake signature)
+PASS | Article key, s3             expected passes rule -> HTTP 400 passed rule (Floci rejects fake signature)
+PASS | Article key, secretsmanager expected passes rule -> HTTP 400 passed rule (Floci rejects fake signature)
+PASS | Article key, dynamodb       expected refused   -> HTTP 403 refused by rule
+PASS | Article key, sns            expected refused   -> HTTP 403 refused by rule
+PASS | Search key, monitoring     expected passes rule -> HTTP 400 passed rule (Floci rejects fake signature)
+PASS | Search key, dynamodb       expected passes rule -> HTTP 400 passed rule (Floci rejects fake signature)
+PASS | Search key, secretsmanager expected refused   -> HTTP 403 refused by rule
+PASS | Identity key, sns            expected passes rule -> HTTP 400 passed rule (Floci rejects fake signature)
+PASS | Identity key, s3             expected refused   -> HTTP 403 refused by rule
+PASS | Identity key, monitoring     expected refused   -> HTTP 403 refused by rule
+Total: 11 passed, 0 failed
+
+Full live gateway security check after the update:
+Live gateway check 2026-11-27T15:01:29.036Z - https://supporthub-floci-gateway.<subdomain>.workers.dev
+PASS | health endpoint 200 and reveals nothing about Floci | {"status":"ok","service":"supporthub-floci-gateway"}
+PASS | no token -> 403 | HTTP 403
+PASS | wrong token secret -> 403 | HTTP 403
+PASS | UNSIGNED S3 read with a valid token -> 403 at the gateway | HTTP 403 Signed AWS request required
+PASS | service 'iam' refused for an allowed key -> 403 | 403 Service not allowed for this key
+PASS | service 'sts' refused for an allowed key -> 403 | 403 Service not allowed for this key
+PASS | service 'secretsmanager' refused for an allowed key -> 403 | 403 Service not allowed for this key
+PASS | service 'sqs' refused for an allowed key -> 403 | 403 Service not allowed for this key
+PASS | service 'lambda' refused for an allowed key -> 403 | 403 Service not allowed for this key
+PASS | service 'ecs' refused for an allowed key -> 403 | 403 Service not allowed for this key
+PASS | Floci default ADMIN key refused at the gateway -> 403
+PASS | Search -> DynamoDB Scan via live gateway
+PASS | Search -> S3 PutObject 70 KB binary via live gateway
+PASS | binary body byte-identical after the live round trip (sha256) | 70000 bytes
+PASS | Search -> CloudWatch PutMetricData via live gateway
+PASS | Search key DENIED the Article bucket (Floci IAM behind the gateway) | AccessDenied
+PASS | Article -> S3 backup Put/Get via live gateway
+PASS | Article key DENIED the Search exports bucket | AccessDenied
+PASS | Article key reads ITS runtime config via live gateway (value not printed) | name ok, 'enabled' is boolean
+PASS | Article key DENIED other secrets (supporthub/shared/session) | AccessDeniedException
+PASS | Search key refused 'secretsmanager' at the gateway (per-key rule) | 403 Service not allowed for this key
+PASS | Identity key refused 's3' at the gateway (per-key rule) | 403 Service not allowed for this key
+PASS | Identity key refused 'secretsmanager' at the gateway (per-key rule) | 403 Service not allowed for this key
+PASS | Identity key DENIED publishing to the publication topic (no event injection) | AuthorizationErrorException
+Total: 24 passed, 0 failed
+Article metricsService -> live gateway -> production Floci: {"sent":1} 
+production Floci SupportHub/Article metrics now: IamProbe BackupsExported

@@ -16,6 +16,19 @@ function mockArticleDatabase() {
     async query(sql, params = []) {
       queries.push(sql);
 
+      // Submission quality pre-check: same ownership/status rules as the UPDATE.
+      if (sql.includes("FOR UPDATE OF a")) {
+        const [id, from, role, userId] = params;
+        const ok = id === 10 && status === from && (role === "admin" || userId === 5);
+        return ok
+          ? { rowCount: 1, rows: [{ id: 10, title: "Reset your router", content: "x".repeat(120), category_id: 1, category_found: 1 }] }
+          : { rowCount: 0, rows: [] };
+      }
+
+      if (sql.includes("WHERE id <> $1")) {
+        return { rowCount: 0, rows: [] }; // no duplicate title
+      }
+
       if (sql.includes("UPDATE articles")) {
         const [to, id, from, role, userId] = params;
 

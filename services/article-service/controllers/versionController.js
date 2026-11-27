@@ -22,6 +22,7 @@ exports.compare=async(req,res,next)=>{try{
 
 
 const backupService = require("../services/articleBackupService");
+const metrics = require("../services/metricsService");
 
 // Export article version to S3.
 exports.exportBackup = async (req, res, next) => {
@@ -40,8 +41,17 @@ exports.exportBackup = async (req, res, next) => {
       { versionId: req.params.versionId }
     );
 
+    metrics.record("BackupsExported");
+    await metrics.flushOnServerless();
+
     res.json(result);
   } catch (error) {
+    // Count real backup failures (S3 / Secrets Manager / configuration: 5xx),
+    // not ownership (403), missing version (404) or validation errors.
+    if (Number(error?.status) >= 500) {
+      metrics.record("BackupFailures");
+      await metrics.flushOnServerless();
+    }
     next(error);
   }
 };
@@ -57,6 +67,21 @@ exports.getBackup = async (req, res, next) => {
     );
 
     res.json({ backup });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Restore a draft from its S3 backup (author-only, owner only).
+exports.restoreBackup = async (req, res, next) => {
+  try {
+    const id = validId(req.params.id);
+    const versionId = validId(req.params.versionId);
+    const result = await backupService.restoreFromBackup(pool, id, versionId, req.user);
+
+    await req.app.locals.audit(req, "article.restore.backup", id, { versionId });
+
+    res.json(result);
   } catch (error) {
     next(error);
   }

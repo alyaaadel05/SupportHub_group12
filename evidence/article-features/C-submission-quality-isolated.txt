@@ -1,0 +1,10 @@
+Article submission-quality check 2026-11-27T13:33:59.703Z - isolated http://localhost:8188
+PASS | author login
+PASS | content < 100 characters -> 422 with clear message | 422 Content must be at least 100 characters before it can be submitted for review (currently 39).
+PASS | rejected draft stays draft, no outbox event
+PASS | duplicate title (case/space-insensitive) -> 422 | 422 Another article already uses this title. Choose a different title before submitting for review.
+PASS | duplicate stays draft, no outbox event
+PASS | several problems are listed together | 422 issues=2
+PASS | after fixing, submit -> 200 in_review with one outbox event | 200
+PASS | re-submitting a non-draft keeps the existing 409 | 409
+Total: 8 passed, 0 failed

@@ -1,0 +1,9 @@
+Production Floci (127.0.0.1:4566) - CloudWatch IAM policy for the Article Vercel user (approved by Alyaa) 2026-11-27T14:57:49Z
+before: ArticleRuntimeConfigSecret SupportHubArticleDemoSQSPublisher SupportHubArticleS3Policy SupportHubArticleSQSPublisher
+put-user-policy SupportHubArticleCloudWatchMetrics: OK
+after:  ArticleRuntimeConfigSecret SupportHubArticleCloudWatchMetrics SupportHubArticleDemoSQSPublisher SupportHubArticleS3Policy SupportHubArticleSQSPublisher
+stored document: {"Version":"2012-10-17","Statement":[{"Sid":"PutArticleMetricsOnly","Effect":"Allow","Action":"cloudwatch:PutMetricData","Resource":"*"}]}
+verify with the production Article key (direct to Floci, local):
+  PutMetricData SupportHub/Article (IamProbe) -> ALLOWED
+  cloudwatch:ListMetrics                      -> DENIED
+  existing S3 access still works (head-bucket) -> ALLOWED

@@ -2,6 +2,7 @@
 const articles = require("../services/articleService");
 const duplicates = require("../services/duplicateService");
 const pool = require("../db/pool");
+const metrics = require("../services/metricsService");
 
 const {
   canAccess
@@ -23,6 +24,9 @@ exports.create = async (req, res, next) => {
       "article.create",
       article.id
     );
+
+    metrics.record("ArticlesCreated");
+    await metrics.flushOnServerless();
 
     res.status(201).json({ article });
 
@@ -182,6 +186,9 @@ exports.submit = async (req, res, next) => {
       "article.submit",
       article.id
     );
+
+    metrics.record("ArticlesSubmitted");
+    await metrics.flushOnServerless();
 
     return res.json({ article });
   } catch (error) {

@@ -382,7 +382,9 @@ app.use((err, req, res, next) => {
     err.status < 500
   ) {
     return res.status(err.status).json({
-      error: err.message
+      error: err.message,
+      // Submission quality rules (422) list every problem separately.
+      ...(Array.isArray(err.issues) ? { issues: err.issues } : {})
     });
   }
 

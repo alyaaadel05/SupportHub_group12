@@ -106,8 +106,31 @@ async function detail(pool, id, versionId, user) {
 // -----------------------------------------
 
 async function restore(pool, id, versionId, user) {
-  id = validId(id);
   versionId = validId(versionId);
+
+  return restoreFrom(pool, id, user, async (client, articleId) => {
+    const { rows } = await client.query(
+      `SELECT *
+       FROM article_versions
+       WHERE article_id = $1
+         AND version_id = $2`,
+      [articleId, versionId]
+    );
+
+    return rows[0];
+  });
+}
+
+// Restore a draft from a snapshot that was already validated by the
+// caller (for example an S3 backup). Same locking and rules as restore().
+async function restoreFromSnapshot(pool, id, snapshot, user) {
+  return restoreFrom(pool, id, user, async () => snapshot);
+}
+
+// Shared restore transaction: lock the article, check access and draft
+// status, apply the source title/content/category and add a version entry.
+async function restoreFrom(pool, id, user, loadSource) {
+  id = validId(id);
 
   const client = await pool.connect();
 
@@ -139,15 +162,7 @@ async function restore(pool, id, versionId, user) {
       );
     }
 
-    const { rows: oldRows } = await client.query(
-      `SELECT *
-       FROM article_versions
-       WHERE article_id = $1
-         AND version_id = $2`,
-      [id, versionId]
-    );
-
-    const old = oldRows[0];
+    const old = await loadSource(client, id);
 
     if (!old) {
       throw httpError(404, "Version not found");
@@ -217,5 +232,6 @@ module.exports = {
   list,
   detail,
   restore,
+  restoreFromSnapshot,
   compareVersions
 };
