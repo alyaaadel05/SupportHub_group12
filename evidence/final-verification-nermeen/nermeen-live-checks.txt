@@ -1,0 +1,16 @@
+SupportHub Group 12 - Nermeen final LIVE checks
+Run by: Nermeen Mostafa (239814) at 2026-11-27T00:05:56.547Z via https://supporthub-group12.pages.dev
+Accounts: author su***@..., editor su***@... (masked)
+
+2026-11-27T00:05:40.797Z | PASS | Check 2 search     | Search for "verification" from published article 23 | GET /api/public/articles?q=verification -> HTTP 200 | article 23 "Live AWS verification liveawsmwy3afvl" is in the results (total 1)
+2026-11-27T00:05:51.928Z | FAIL | Check 3 backup     | S3 backup export (Secrets Manager config read first) | POST /api/articles/22/versions/31/export -> HTTP 503 | failed: {"error":"Required cloud service temporarily unavailable"}
+2026-11-27T00:05:52.551Z | FAIL | Check 3 backup     | S3 backup read-back | GET /api/articles/22/versions/31/export -> HTTP 503 | failed: {"error":"Required cloud service temporarily unavailable"}
+2026-11-27T00:05:56.542Z | PASS | Check 2 vote       | Helpfulness vote counted | GET /api/analytics/overview -> HTTP 200 | votes 2 -> 3 (helpful 1 -> 2, unhelpful 1 -> 1)
+2026-11-27T00:05:56.542Z | PASS | Check 1 sentiment  | Positive feedback stored as POSITIVE | GET /api/analytics/overview -> HTTP 200 | POSITIVE 0 -> 1
+2026-11-27T00:05:56.543Z | PASS | Check 1 sentiment  | Negative feedback stored as NEGATIVE | GET /api/analytics/overview -> HTTP 200 | NEGATIVE 0 -> 1
+
+Total: 4 PASS, 2 FAIL
+
+Notes: the vote and the two feedback messages were sent in a real browser on the live site, because the
+Search service requires a Cloudflare Turnstile token that only a browser can produce. This script confirms
+them by comparing the analytics overview before and after. Checks run with Claude assistance.

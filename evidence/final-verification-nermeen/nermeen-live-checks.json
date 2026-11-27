@@ -1,0 +1,86 @@
+{
+  "ranBy": "Nermeen Mostafa (239814)",
+  "at": "2026-11-27T00:05:56.543Z",
+  "via": "https://supporthub-group12.pages.dev",
+  "author": "su***@...",
+  "editor": "su***@...",
+  "before": {
+    "http": 200,
+    "role": "editor",
+    "at": "2026-11-26T23:08:10.377Z",
+    "totalVotes": 2,
+    "helpfulVotes": 1,
+    "unhelpfulVotes": 1,
+    "sentiment": {}
+  },
+  "after": {
+    "http": 200,
+    "role": "editor",
+    "at": "2026-11-27T00:05:56.542Z",
+    "totalVotes": 3,
+    "helpfulVotes": 2,
+    "unhelpfulVotes": 1,
+    "sentiment": {
+      "NEGATIVE": 1,
+      "POSITIVE": 1
+    }
+  },
+  "rows": [
+    {
+      "time": "2026-11-27T00:05:40.797Z",
+      "check": "Check 2 search",
+      "operation": "Search for \"verification\" from published article 23",
+      "endpoint": "GET /api/public/articles?q=verification",
+      "http": 200,
+      "confirmed": "article 23 \"Live AWS verification liveawsmwy3afvl\" is in the results (total 1)",
+      "result": "PASS"
+    },
+    {
+      "time": "2026-11-27T00:05:51.928Z",
+      "check": "Check 3 backup",
+      "operation": "S3 backup export (Secrets Manager config read first)",
+      "endpoint": "POST /api/articles/22/versions/31/export",
+      "http": 503,
+      "confirmed": "failed: {\"error\":\"Required cloud service temporarily unavailable\"}",
+      "result": "FAIL"
+    },
+    {
+      "time": "2026-11-27T00:05:52.551Z",
+      "check": "Check 3 backup",
+      "operation": "S3 backup read-back",
+      "endpoint": "GET /api/articles/22/versions/31/export",
+      "http": 503,
+      "confirmed": "failed: {\"error\":\"Required cloud service temporarily unavailable\"}",
+      "result": "FAIL"
+    },
+    {
+      "time": "2026-11-27T00:05:56.542Z",
+      "check": "Check 2 vote",
+      "operation": "Helpfulness vote counted",
+      "endpoint": "GET /api/analytics/overview",
+      "http": 200,
+      "confirmed": "votes 2 -> 3 (helpful 1 -> 2, unhelpful 1 -> 1)",
+      "result": "PASS"
+    },
+    {
+      "time": "2026-11-27T00:05:56.542Z",
+      "check": "Check 1 sentiment",
+      "operation": "Positive feedback stored as POSITIVE",
+      "endpoint": "GET /api/analytics/overview",
+      "http": 200,
+      "confirmed": "POSITIVE 0 -> 1",
+      "result": "PASS"
+    },
+    {
+      "time": "2026-11-27T00:05:56.543Z",
+      "check": "Check 1 sentiment",
+      "operation": "Negative feedback stored as NEGATIVE",
+      "endpoint": "GET /api/analytics/overview",
+      "http": 200,
+      "confirmed": "NEGATIVE 0 -> 1",
+      "result": "PASS"
+    }
+  ],
+  "pass": 4,
+  "fail": 2
+}
