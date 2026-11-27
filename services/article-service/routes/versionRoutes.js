@@ -62,6 +62,15 @@ router.post(
   c.exportBackup
 );
 
+// Restore a draft from its S3 backup (authors only; ownership checked in the service).
+router.post(
+  "/articles/:id/versions/:versionId/restore-backup",
+  requireRole("author"),
+  restoreLimit,
+  ...secure,
+  c.restoreBackup
+);
+
 // Retrieve an article version from S3
 router.get(
   "/articles/:id/versions/:versionId/export",

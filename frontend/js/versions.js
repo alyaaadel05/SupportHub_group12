@@ -390,6 +390,54 @@ async function restoreVersion() {
   }
 }
 
+// Restore the draft from the selected version's S3 backup.
+async function restoreFromBackup() {
+  if (!currentArticleId) {
+    versionMessage("Load an article first.");
+    return;
+  }
+
+  const versionId = document.getElementById(
+    "restore-version"
+  ).value;
+
+  if (!versionId) {
+    versionMessage("Select a version to restore.");
+    return;
+  }
+
+  const confirmed = confirm(
+    "Restore this version from its S3 backup?\n\n" +
+    "This will update your draft and create " +
+    "a new version history entry."
+  );
+
+  if (!confirmed) return;
+
+  try {
+    versionMessage("Restoring from S3 backup...");
+
+    await api(
+      "/articles/" +
+      currentArticleId +
+      "/versions/" +
+      encodeURIComponent(versionId) +
+      "/restore-backup",
+      { method: "POST" }
+    );
+
+    await loadVersions(currentArticleId);
+
+    versionMessage(
+      "Draft restored from the S3 backup. " +
+      "A new history entry was created."
+    );
+
+  } catch (error) {
+    versionMessage(error.message);
+  }
+}
+
 // ------------------------------------------
 // 6. INITIALIZE PAGE
 // ------------------------------------------
@@ -430,6 +478,13 @@ async function initializeVersionsPage() {
   ).addEventListener(
     "click",
     restoreVersion
+  );
+
+  document.getElementById(
+    "restore-backup-button"
+  ).addEventListener(
+    "click",
+    restoreFromBackup
   );
 
   // Support URLs such as:
