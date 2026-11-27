@@ -5,6 +5,10 @@ const { HttpError, id, text } = require("./http");
 const { getArticle: defaultGetArticle } = require("./serviceClient");
 
 const DEFAULT_LIMIT = 50;
+
+// Automatic re-review rule (also checked by Search before it calls).
+const AUTO_FLAG_MIN_UNHELPFUL = 5;
+const AUTO_FLAG_MIN_RATIO = 0.6;
 const MAX_LIMIT = 100;
 
 function paginationValue(value, fallback, minimum, maximum, label) {
@@ -64,6 +68,77 @@ function createFlagService({ pool, getArticle }) {
          ON CONFLICT (article_id) WHERE status = 'open' DO NOTHING
          RETURNING *`,
         [articleId, userId, reason]
+      );
+
+      if (result.rows[0]) {
+        return { ...result.rows[0], duplicate: false };
+      }
+
+      const existing = await pool.query(
+        `SELECT *
+         FROM editorial_outdated_flags
+         WHERE article_id = $1
+           AND status = 'open'
+         ORDER BY flag_id
+         LIMIT 1`,
+        [articleId]
+      );
+
+      if (existing.rows[0]) {
+        return { ...existing.rows[0], duplicate: true };
+      }
+    }
+
+    throw new HttpError(409, "Flag could not be recorded; please retry");
+  }
+
+  // Opens a re-review requested by Search Service because readers marked
+  // the article unhelpful. There is no editor user, so flagged_by is NULL
+  // and source = 'search' (migration 009). Editorial checks the rule again
+  // so a faulty or compromised caller cannot flag arbitrary articles.
+  async function autoFlag(body) {
+    const articleId = id(body?.articleId);
+    const unhelpful = body?.unhelpfulVotes;
+    const total = body?.totalVotes;
+
+    if (
+      !Number.isSafeInteger(unhelpful) ||
+      !Number.isSafeInteger(total) ||
+      unhelpful < 0 ||
+      total <= 0 ||
+      unhelpful > total
+    ) {
+      throw new HttpError(400, "Invalid vote counts");
+    }
+
+    if (unhelpful < AUTO_FLAG_MIN_UNHELPFUL || unhelpful / total <= AUTO_FLAG_MIN_RATIO) {
+      throw new HttpError(
+        422,
+        `Rule not met: needs at least ${AUTO_FLAG_MIN_UNHELPFUL} unhelpful votes and more than ${AUTO_FLAG_MIN_RATIO * 100}% unhelpful`
+      );
+    }
+
+    const article = await getArticle(articleId);
+
+    if (!article) {
+      throw new HttpError(404, "Article not found");
+    }
+
+    if (article.status !== "published") {
+      throw new HttpError(409, "Only published articles can be flagged");
+    }
+
+    const reason =
+      `Automatic: readers marked this article unhelpful (${unhelpful} of ${total} votes)`;
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const result = await pool.query(
+        `INSERT INTO editorial_outdated_flags
+           (article_id, flagged_by, reason, source)
+         VALUES ($1, NULL, $2, 'search')
+         ON CONFLICT (article_id) WHERE status = 'open' DO NOTHING
+         RETURNING *`,
+        [articleId, reason]
       );
 
       if (result.rows[0]) {
@@ -219,7 +294,7 @@ function createFlagService({ pool, getArticle }) {
     throw new HttpError(409, "Flag has already been resolved");
   }
 
-  return { flag, listOpen, resolve };
+  return { flag, autoFlag, listOpen, resolve };
 }
 
 const defaultService = createFlagService({
@@ -229,5 +304,7 @@ const defaultService = createFlagService({
 
 module.exports = {
   ...defaultService,
-  createFlagService
+  createFlagService,
+  AUTO_FLAG_MIN_UNHELPFUL,
+  AUTO_FLAG_MIN_RATIO
 };

@@ -46,6 +46,9 @@
           node("strong", flag.article?.title || `Article #${flag.article_id}`),
           node("span", "Open", "badge badge-warning")
         );
+        if (flag.source === "search") {
+          head.append(node("span", "Automatic (reader votes)", "badge"));
+        }
         item.append(
           head,
           node("p", flag.reason),

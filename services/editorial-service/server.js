@@ -5,10 +5,10 @@ const helmet = require("helmet");
 const session = require("express-session");
 const PgSession = require("connect-pg-simple")(session);
 const rateLimit = require("express-rate-limit");
-const { generalLimit } = require("./config/rateLimitProfiles");
+const { generalLimit, createLimiter } = require("./config/rateLimitProfiles");
 const { securityEventLogger } = require("./middleware/securityEvents");
 const pool = require("./db/pool");
-const { requireCronSecret, allowedOrigins } = require("./middleware/security");
+const { requireCronSecret, allowedOrigins, requireServiceSignature } = require("./middleware/security");
 const notifications = require("./services/notificationService");
 
 if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32 || !process.env.FRONTEND_ORIGIN)
@@ -24,7 +24,11 @@ app.disable("x-powered-by");
 app.set("trust proxy", 1);
 app.use(helmet());
 app.use(securityEventLogger);
-app.use(express.json({ limit: "100kb" }));
+app.use(express.json({
+  limit: "100kb",
+  // Keep the exact bytes so signed internal requests can be verified.
+  verify: (req, res, buf) => { req.rawBody = buf.toString("utf8"); }
+}));
 // Browser calls are expected through the Cloudflare Pages same-origin /api proxy.
 // Sessions must use the identical cookie name, secret and Postgres table as Identity and Article.
 app.use(session({
@@ -56,6 +60,14 @@ app.post("/internal/retry-publication-events", requireCronSecret, async (req,res
   try { res.json(await publicationEvents.requeueFailed({ eventId: req.body?.eventId })); }
   catch(e) { next(e); }
 });
+// Search Service asks for a re-review when readers mark an article unhelpful.
+// Signed with the shared service secret; Editorial re-checks the rule itself.
+app.post(
+  "/internal/auto-flags",
+  createLimiter("editorial-auto-flags", 60),
+  requireServiceSignature("search-analytics-service"),
+  require("./controllers/flagController").autoFlag
+);
 app.use((req,res) => res.status(404).json({ error: "Route not found" }));
 app.use((error,req,res,next) => {
   if (error.type === "entity.too.large") return res.status(413).json({ error: "Request too large" });
