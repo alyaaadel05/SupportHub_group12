@@ -121,6 +121,53 @@ function requireBrowserWrite(req, res, next) {
   next();
 }
 
+// Verifies a signed internal request from another SupportHub service.
+// Same format as serviceClient.signedHeaders():
+//   HMAC-SHA256(secret, sender \n timestamp \n method \n path \n sha256(body))
+// The timestamp must be within 5 minutes, which limits replay.
+function serviceSignature(secret, sender, timestamp, method, path, body = "") {
+  const hash = crypto.createHash("sha256").update(body).digest("hex");
+
+  return crypto
+    .createHmac("sha256", secret)
+    .update(`${sender}\n${timestamp}\n${method}\n${path}\n${hash}`)
+    .digest("hex");
+}
+
+function requireServiceSignature(expectedSender) {
+  return function verifyServiceSignature(req, res, next) {
+    const secret = process.env.SERVICE_SHARED_SECRET;
+    const sender = req.get("x-service-name");
+    const timestamp = req.get("x-service-timestamp") || "";
+    const signature = req.get("x-service-signature") || "";
+
+    if (!secret || secret.length < 32) {
+      return res.status(503).json({ error: "Internal service not configured" });
+    }
+
+    if (
+      sender !== expectedSender ||
+      !/^\d{13}$/.test(timestamp) ||
+      Math.abs(Date.now() - Number(timestamp)) > 5 * 60 * 1000 ||
+      !/^[0-9a-f]{64}$/i.test(signature)
+    ) {
+      return res.status(401).json({ error: "Invalid service credentials" });
+    }
+
+    const expected = Buffer.from(
+      serviceSignature(secret, sender, timestamp, req.method, req.originalUrl, req.rawBody || ""),
+      "hex"
+    );
+    const supplied = Buffer.from(signature, "hex");
+
+    if (expected.length !== supplied.length || !crypto.timingSafeEqual(expected, supplied)) {
+      return res.status(401).json({ error: "Invalid service signature" });
+    }
+
+    next();
+  };
+}
+
 function requireCronSecret(req, res, next) {
   const secret = process.env.CRON_SECRET;
   const bearer = req.get("authorization") || "";
@@ -144,6 +191,8 @@ function requireCronSecret(req, res, next) {
 }
 
 module.exports = {
+  requireServiceSignature,
+  serviceSignature,
   allowedOrigins,
   isAllowedOrigin,
   requireLogin,

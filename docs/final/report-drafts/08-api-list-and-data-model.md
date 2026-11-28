@@ -62,6 +62,7 @@
 | GET | `/api/csrf-token` | login | CSRF token for Editorial writes |
 | POST | `/internal/retry-notifications` | cron secret | Scheduled retry of notifications |
 | POST | `/internal/retry-publication-events` | cron secret | Requeue failed SNS events (D3) |
+| POST | `/internal/auto-flags` | HMAC (Search) | Automatic re-review from reader votes: needs 5+ unhelpful and more than 60% unhelpful (201 / 200 duplicate / 400 / 401 / 404 / 409 / 422 / 429) |
 | GET | `/api/health` | public | Health |
 
 ## 8.4 Search, Feedback & Analytics Service (Nermeen): `services/search-analytics-service/routes/*.js`, `server.js`

@@ -19,9 +19,10 @@ This document applies the group threat model (`docs/threat-model.md`, nine threa
 | `GET /api/editorial/flags` · `POST /api/articles/:id/flags` · `PATCH /api/flags/:id` | `requireReviewer` (+ `requireBrowserWrite` on writes) | Outdated-content flags |
 | `POST /api/review-operations/:id/reconcile` · `POST /api/editorial/publication-operations/:id/reconcile` | `requireReviewer` → `requireBrowserWrite` | Reconcile uncertain workflow operations |
 | `POST /internal/retry-notifications` | `requireCronSecret` (Bearer, ≥32 chars, constant-time) | Scheduled retry |
+| `POST /internal/auto-flags` | `createLimiter` (60/min) → `requireServiceSignature("search-analytics-service")` → rule re-check | Automatic re-review requested by Search from reader votes (T10) |
 | `GET /api/csrf-token` · `GET /api/health` | `requireLogin` · public | CSRF token issue · liveness + DB check |
 
-Database tables owned by Editorial: `editorial_reviews`, `editorial_status_events`, `editorial_outdated_flags`, `publication_outbox`, `editorial_workflow_operations`, `editorial_event_inbox`, `editorial_publication_events`. Sessions live in the shared `user_sessions` table.
+Database tables owned by Editorial: `editorial_reviews`, `editorial_status_events`, `editorial_outdated_flags`, `publication_outbox`, `editorial_workflow_operations`, `editorial_event_inbox`, `editorial_publication_events`. Since migration 009, `editorial_outdated_flags.source` records whether a flag came from an editor or from Search. Sessions live in the shared `user_sessions` table.
 
 ---
 
@@ -34,7 +35,7 @@ Database tables owned by Editorial: `editorial_reviews`, `editorial_status_event
 | **Impact** | Reading other reviews, forging approvals, deleting workflow/audit tables. |
 | **Existing mitigation** | Every query uses `pg` positional parameters (`$1, $2 …`) with a separate values array — no string-built SQL. Route IDs pass through `id()` in `services/http.js`, which now accepts **only plain decimal digits** (rejects `0x1`, `1e3`, signs, whitespace, SQL text) and returns 400 before any query. Text fields are type-checked and length-limited (`text()`, `reviewComments()`), and DB `CHECK` constraints (migrations 001, 007) restrict values. |
 | **Security test** | `securityHttp.test.js` S5 (three tests): five SQLi payloads in IDs → **400, zero queries executed**; SQLi payload in flag reason → stored as literal text, absent from SQL text, sent as `$3`; static scan of all Editorial source finds **no** `.query(` call with `${…}` interpolation. `validation.test.js` covers hex/exponent/padded IDs. |
-| **Residual risk** | A future developer could add dynamic SQL (e.g. a sortable column); the static-scan test will catch template-literal interpolation but not string concatenation with `+`. The DB user is shared across services, so least-privilege per service is not enforced at the database level. |
+| **Residual risk** | A future developer could add dynamic SQL (e.g. a sortable column); the static-scan test will catch template-literal interpolation but not string concatenation with `+`. In production each service connects with its own restricted Neon role (Editorial: `supporthub_editorial_app`, verified in `evidence/cloud-architecture/step5-live-verification/01-vercel-neon-roles.txt`). The local Docker stack still uses one shared database user, so per-service database privileges are only enforced in production. |
 
 ## T2 — Cross-Site Scripting (stored / reflected)
 
@@ -124,6 +125,17 @@ Database tables owned by Editorial: `editorial_reviews`, `editorial_status_event
 | **Security test** | S7: forged-signature, unsigned and empty cookies on the real server → **401**; sessions with no user (expired/logged out) or tampered ids → **401**. |
 | **Residual risk** | No idle timeout separate from the 8-hour lifetime; no binding to IP/User-Agent. Compromise of `SESSION_SECRET` affects all three services because it is shared. |
 
+## T10 — Forged internal service request
+
+| | |
+|---|---|
+| **Affected component** | `POST /internal/auto-flags` (`server.js`), `requireServiceSignature` (`middleware/security.js`), `flagService.autoFlag()`, migration 009. |
+| **Attack scenario** | Anyone who can reach the Editorial API sends `POST /internal/auto-flags` pretending to be Search, to bury good articles under re-reviews or flood the editors. A variant replays a captured genuine request later, or changes the article ID in the body of a signed request. |
+| **Impact** | False re-review flags on published articles, wasted editor time, and editors no longer trusting automatic flags. |
+| **Existing mitigation** | The route has no session; it only accepts requests signed with `SERVICE_SHARED_SECRET` (HMAC-SHA256 over sender, timestamp, method, path and a SHA-256 of the exact raw body), compared in constant time. The sender must be `search-analytics-service` (Article cannot use it) and the timestamp must be within 5 minutes, which limits replay. Rate limited to 60 requests per minute. Editorial re-checks the business rule itself (at least 5 unhelpful votes and more than 60% unhelpful, else 422), requires the article to be published (404 / 409) and never opens a second flag for the same article (partial unique index from migration 008). Database constraint `editorial_flags_source_valid` keeps automatic flags without an editor ID and editor flags with one. Every rejected request is logged as a `security_event` without the signature or secret. |
+| **Security test** | `tests/autoFlag.test.js`: unsigned, wrong sender, changed body, 10-minute-old timestamp and wrong secret → **401**; real server without signature → **401**; rule not met → **422**; invalid IDs and counts (including SQL text) → **400**; repeat → same flag (`duplicate: true`). Live checks and logs: `evidence/final-verification-salma/15`–`20`. |
+| **Residual risk** | The vote counts are sent by Search; Editorial cannot verify them independently, so a compromised Search service (or a leaked shared secret) could still open flags for published articles — limited to one open flag per article and 60 per minute. A replay inside the 5-minute window is possible but only returns the existing flag. Proposed improvement: a separate secret per service pair, and Editorial reading the vote counts from Search instead of trusting the body. |
+
 ---
 
 ## Summary
@@ -139,3 +151,4 @@ Database tables owned by Editorial: `editorial_reviews`, `editorial_status_event
 | T7 | Automated abuse | Rate limit, body limit, SQS dedupe/DLQ | S8, event tests | Turnstile (Identity/Search) |
 | T8 | Sensitive data exposure | Yes | Git audit | Secret rotation if any were committed |
 | T9 | Session hijacking | Yes (cookie + server-side store) | S7 ×2 | Production `Secure` cookie check |
+| T10 | Forged internal service request | Yes (HMAC signature, sender, timestamp, rule re-check, rate limit) | autoFlag ×8 | Live call from Search once its side is merged |
