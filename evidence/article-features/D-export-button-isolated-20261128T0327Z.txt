@@ -1,0 +1,27 @@
+Export to S3 Backup button check 2026-11-28T03:27:32.006Z - isolated http://localhost:8188, Floci http://localhost:4567
+PASS | author login (author@supporthub.test)
+PASS | author2 login (author2@supporthub.test)
+PASS | create author draft | article 260
+PASS | no S3 backup exists yet for this version | articles/260/versions/411.json
+PASS | button 'Export to S3 Backup' is visible
+PASS | no version selected -> message, no request
+PASS | click Export -> POST .../export 200 | 200
+PASS | success message shown
+PASS | button re-enabled after export
+PASS | browser sent X-CSRF-Token on the export POST | /api/articles/260/versions/411/export
+PASS | object written to isolated S3 | s3://supporthub-article-backups/articles/260/versions/411.json 409 B 2026-11-28T03:27:41+00:00
+PASS | backup read back: same article, version and original content
+PASS | edit draft after the backup
+PASS | click Restore from S3 Backup (confirm accepted) -> 200 | 200, dialogs 1
+PASS | draft restored to the exported content | Export button uiexportmwzunmp3|draft|true
+PASS | restore created a new history entry
+PASS | no CSP violations or page errors
+PASS | no session -> 401 | 401
+PASS | session without CSRF token -> 403 | 403 Invalid or missing CSRF token
+PASS | wrong CSRF token -> 403 | 403 Invalid or missing CSRF token
+PASS | foreign Origin -> 403 (origin validation) | 403 Origin not allowed
+PASS | another author exports this draft -> 403 (ownership) | 403 Forbidden
+PASS | another author restores this draft -> 403 (ownership) | 403 Forbidden
+PASS | export carries the version-backup limiter headers | policy=20;w=900 ratelimit=limit=20, remaining=13, reset=893
+PASS | limit reached -> 429 version-backup | after 14 more requests: 429 Too many requests. Please try again later.
+Total: 25 passed, 0 failed (article 260, version 411)
