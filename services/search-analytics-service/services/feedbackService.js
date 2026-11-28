@@ -1,6 +1,7 @@
 const pool = require("../db/pool");
 const { HttpError, id, boundedString } = require("./http");
 const { classify } = require("./sentimentService");
+const autoFlag = require("./autoFlagService");
 async function published(articleId) {
   const r = await pool.query("SELECT 1 FROM search_published_articles WHERE article_id=$1", [articleId]);
   if (!r.rowCount) throw new HttpError(404, "Published article not found");
@@ -12,6 +13,9 @@ async function vote(articleId, userId, helpful) {
   const result = await pool.query(`INSERT INTO helpfulness_votes(article_id,user_id,helpful)
     VALUES($1,$2,$3) ON CONFLICT(article_id,user_id) DO UPDATE
     SET helpful=EXCLUDED.helpful, updated_at=NOW() RETURNING *`, [articleId,userId,helpful]);
+  // An unhelpful vote may ask Editorial for an automatic re-review. Awaited because Vercel stops
+  // work after the response; it never throws, so the vote is saved even if Editorial is down.
+  if (!result.rows[0].helpful) await autoFlag.checkAfterUnhelpfulVote(articleId);
   return { articleId, helpful: result.rows[0].helpful, saved: true };
 }
 async function comment(articleId, userId, text) {
