@@ -1,0 +1,32 @@
+My Articles inline notices check 2026-11-28T04:00:00.988Z - isolated http://localhost:8188
+worktree files served: editor.html sha256 e4bb77a3db10, js/editorial.js sha256 568e44adfa0e
+PASS | author login (author@supporthub.test)
+PASS | editor login (editor@supporthub.test)
+PASS | setup drafts created via API | short 266, ok 267, double 268
+PASS | worktree editor.html and js/editorial.js were served
+PASS | 422 -> red notice inside the affected card | 422 "Content must be at least 100 characters before it can be submitted for review (currently 20)."
+PASS | error notice has role=alert
+PASS | error notice is red | rgb(153, 27, 27) on rgb(254, 242, 242)
+PASS | notice is below the card's buttons | notice y=535 button y=483
+PASS | no notice on any other card
+PASS | submit button re-enabled after the error
+PASS | 422 left the article a draft (DB)
+PASS | pending notice shown while the request runs
+PASS | submit button disabled during the request | third click refused (button disabled)
+PASS | double-click + extra click sent exactly ONE submit request | 1 request(s)
+PASS | exactly one outbox event for that article (DB)
+PASS | submit -> 200 | 200
+PASS | list refreshed: card shows Status: in_review and no Submit/Edit/Delete buttons | Status: In_review
+PASS | green notice still visible after the refresh
+PASS | success notice is green, role=status | rgb(22, 101, 52) on rgb(240, 253, 244)
+PASS | only the submitted article has a success notice
+PASS | create draft through the form | article 269
+PASS | Edit fills the form
+PASS | edit draft through the form
+PASS | Version History opens with both versions
+PASS | delete draft (confirm accepted)
+PASS | review.html loaded the worktree js/editorial.js
+PASS | Editorial review queue lists the article submitted above
+PASS | review queue offers Approve and Reject
+PASS | no CSP violations or page errors on editor.html, versions.html, review.html
+Total: 29 passed, 0 failed

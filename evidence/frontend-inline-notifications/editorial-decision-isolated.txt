@@ -1,0 +1,9 @@
+Editorial decision check - 2026-11-28T04:00:32.102Z - http://localhost:8188 (Origin http://localhost:8188)
+PASS | editor login | HTTP 200 editor
+PASS | review queue loads | HTTP 200, 6 reviewable items
+PASS | Approve article 267 | HTTP 201
+PASS | database: article 267 approved | articles.status/review.decision = approved/approved
+PASS | Reject article 268 | HTTP 201
+PASS | database: article 268 back to draft, review rejected | articles.status/review.decision = draft/rejected
+
+Total: 6 passed, 0 failed
