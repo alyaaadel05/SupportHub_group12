@@ -1,0 +1,155 @@
+{
+  "at": "2026-11-27T23:20:56.656Z",
+  "via": "https://supporthub-group12.pages.dev",
+  "term": "featlivemwzltsxx",
+  "article23": {
+    "id": 23,
+    "version": 32
+  },
+  "drafts": {
+    "A": 24,
+    "C": 25
+  },
+  "metricsBefore": {
+    "ArticlesCreated": 0,
+    "ArticlesSubmitted": 0,
+    "BackupsExported": 0,
+    "BackupFailures": 0
+  },
+  "metricsAfter": {
+    "ArticlesCreated": 2,
+    "ArticlesSubmitted": 0,
+    "BackupsExported": 2,
+    "BackupFailures": 0
+  },
+  "rows": [
+    {
+      "time": "2026-11-27T23:20:30.071Z",
+      "feature": "Backup fix",
+      "operation": "S3 backup export (Secrets Manager read + PutObject)",
+      "endpoint": "POST /api/articles/23/versions/32/export",
+      "http": 200,
+      "detail": "s3://supporthub-article-backups/articles/23/versions/32.json 447 B 2026-11-27T23:20:27+00:00",
+      "result": "PASS"
+    },
+    {
+      "time": "2026-11-27T23:20:31.102Z",
+      "feature": "Backup fix",
+      "operation": "S3 backup read-back (GetObject)",
+      "endpoint": "GET /api/articles/23/versions/32/export",
+      "http": 200,
+      "detail": "articleId=23 versionId=32",
+      "result": "PASS"
+    },
+    {
+      "time": "2026-11-27T23:20:33.301Z",
+      "feature": "A",
+      "operation": "create verification draft",
+      "endpoint": "POST /api/articles",
+      "http": 201,
+      "detail": "article 24",
+      "result": "PASS"
+    },
+    {
+      "time": "2026-11-27T23:20:36.170Z",
+      "feature": "A",
+      "operation": "back up version to S3",
+      "endpoint": "POST /api/articles/24/versions/33/export",
+      "http": 200,
+      "detail": "articles/24/versions/33.json",
+      "result": "PASS"
+    },
+    {
+      "time": "2026-11-27T23:20:37.332Z",
+      "feature": "A",
+      "operation": "edit the draft after the backup",
+      "endpoint": "PATCH /api/articles/24",
+      "http": 200,
+      "detail": "Live feature A restore featlivemwzltsxx (edited)",
+      "result": "PASS"
+    },
+    {
+      "time": "2026-11-27T23:20:39.206Z",
+      "feature": "A",
+      "operation": "restore draft from S3 backup",
+      "endpoint": "POST /api/articles/24/versions/33/restore-backup",
+      "http": 200,
+      "detail": "restoredFrom=articles/24/versions/33.json",
+      "result": "PASS"
+    },
+    {
+      "time": "2026-11-27T23:20:39.899Z",
+      "feature": "A",
+      "operation": "Neon: draft content equals the backed-up version",
+      "endpoint": "(read-only SELECT, article role)",
+      "http": "-",
+      "detail": "status=draft title=\"Live feature A restore featlivemwzltsxx\"",
+      "result": "PASS"
+    },
+    {
+      "time": "2026-11-27T23:20:42.322Z",
+      "feature": "C",
+      "operation": "create short verification draft",
+      "endpoint": "POST /api/articles",
+      "http": 201,
+      "detail": "article 25",
+      "result": "PASS"
+    },
+    {
+      "time": "2026-11-27T23:20:43.191Z",
+      "feature": "C",
+      "operation": "submit a too-short draft -> 422 with issues",
+      "endpoint": "POST /api/articles/25/submit",
+      "http": 422,
+      "detail": "{\"error\":\"Content must be at least 100 characters before it can be submitted for review (currently 20).\",\"issues\":[\"Content must be at least",
+      "result": "PASS"
+    },
+    {
+      "time": "2026-11-27T23:20:44.492Z",
+      "feature": "C",
+      "operation": "Neon: still draft, no outbox event",
+      "endpoint": "(read-only SELECT, article role)",
+      "http": "-",
+      "detail": "status=draft outbox_events=0",
+      "result": "PASS"
+    },
+    {
+      "time": "2026-11-27T23:20:56.656Z",
+      "feature": "B",
+      "operation": "ArticlesCreated +2 (drafts A and C)",
+      "endpoint": "cloudwatch get-metric-statistics SupportHub/Article",
+      "http": "-",
+      "detail": "+2",
+      "result": "PASS"
+    },
+    {
+      "time": "2026-11-27T23:20:56.656Z",
+      "feature": "B",
+      "operation": "BackupsExported +2 (article 23 and draft A)",
+      "endpoint": "cloudwatch get-metric-statistics SupportHub/Article",
+      "http": "-",
+      "detail": "+2",
+      "result": "PASS"
+    },
+    {
+      "time": "2026-11-27T23:20:56.656Z",
+      "feature": "B",
+      "operation": "ArticlesSubmitted +0 (the 422 is not counted)",
+      "endpoint": "cloudwatch get-metric-statistics SupportHub/Article",
+      "http": "-",
+      "detail": "+0",
+      "result": "PASS"
+    },
+    {
+      "time": "2026-11-27T23:20:56.656Z",
+      "feature": "B",
+      "operation": "BackupFailures +0",
+      "endpoint": "cloudwatch get-metric-statistics SupportHub/Article",
+      "http": "-",
+      "detail": "+0",
+      "result": "PASS"
+    }
+  ],
+  "pass": 14,
+  "fail": 0
+}
