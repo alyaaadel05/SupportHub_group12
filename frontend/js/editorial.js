@@ -379,7 +379,21 @@ function initializeReferenceSearch() {
 // 6. LOAD MY ARTICLES
 // ==========================================
 
-async function loadMyArticles() {
+// Display submission feedback inside the affected article card.
+function showArticleNotice(card, message, type) {
+  let notice = card.querySelector(".article-notice");
+
+  if (!notice) {
+    notice = el("p", "", "article-notice");
+    card.appendChild(notice);
+  }
+
+  notice.className = "article-notice article-notice-" + type;
+  notice.setAttribute("role", type === "error" ? "alert" : "status");
+  notice.textContent = message;
+}
+
+async function loadMyArticles(submissionNotice = null) {
   const container = document.getElementById(
     "my-articles"
   );
@@ -400,6 +414,8 @@ async function loadMyArticles() {
 
   for (const article of articles) {
     const card = el("article", "", "article-card");
+
+
 
     card.appendChild(el("h3", article.title));
 
@@ -451,34 +467,55 @@ if (article.status === "draft") {
       );
 
       // SUBMIT FOR REVIEW
-      // Existing endpoint retained for later integration.
-      card.appendChild(
-        actionButton("Submit for Review", async () => {
+      const submitButton = actionButton(
+        "Submit for Review",
+        async () => {
+          submitButton.disabled = true;
+
+          showArticleNotice(
+            card,
+            "Submitting article...",
+            "pending"
+          );
+
           try {
             await api(
               "/articles/" +
               encodeURIComponent(article.id) +
               "/submit",
-              {
-                method: "POST"
-              }
+              { method: "POST" }
             );
-
-            showMessage(
-              "editor-message",
-              "Article submitted for review."
-            );
-
-            await loadMyArticles();
-
           } catch (error) {
-            showMessage(
-              "editor-message",
-              error.message
+            showArticleNotice(card, error.message, "error");
+            submitButton.disabled = false;
+            return;
+          }
+
+          showArticleNotice(
+            card,
+            "Article submitted for review.",
+            "success"
+          );
+
+          try {
+            await loadMyArticles({
+              articleId: article.id,
+              message: "Article submitted for review."
+            });
+          } catch (error) {
+            if (!card.isConnected) {
+              container.appendChild(card);
+            }
+            showArticleNotice(
+              card,
+              "Article submitted successfully. Refresh the page to update its status.",
+              "success"
             );
           }
-        })
+        }
       );
+
+      card.appendChild(submitButton);
     } else {
       card.appendChild(
         actionButton("Version History", () => {
@@ -522,6 +559,17 @@ if (article.status === "draft") {
             );
           }
         }, "danger")
+      );
+    }
+
+    if (
+      submissionNotice &&
+      String(submissionNotice.articleId) === String(article.id)
+    ) {
+      showArticleNotice(
+        card,
+        submissionNotice.message,
+        "success"
       );
     }
 

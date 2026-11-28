@@ -1,0 +1,519 @@
+✔ successfully processed event is deleted (1.9549ms)
+✔ duplicate event is accepted and deleted (0.3636ms)
+✔ duplicate article event is accepted and deleted (0.2553ms)
+✔ invalid JSON is not deleted (0.7431ms)
+✔ missing message body is not deleted (0.2874ms)
+✔ missing receipt handle is not deleted (0.2192ms)
+✔ database processing failure leaves message undeleted (0.2754ms)
+✔ unexpected processing status leaves message undeleted (0.2658ms)
+✔ SQS deletion failure is propagated (0.2901ms)
+✔ event processing finishes before deletion (0.5663ms)
+✔ stop interrupts an outstanding SQS long poll (0.789ms)
+✔ stop waits for an already-received event to finish (0.4186ms)
+✔ processes a submitted article and commits its review (2.9582ms)
+✔ acknowledges a duplicate event when Article Service is unavailable (1.0858ms)
+✔ does not create a second review for a duplicate event (0.7371ms)
+✔ rejects an unsupported event type before database access (1.7361ms)
+✔ rejects an event when the article author does not match (0.8683ms)
+✔ rejects an article that is not in review (0.7761ms)
+✔ rolls back when review creation fails (0.7438ms)
+✔ reuses an existing pending review for another event ID (0.7287ms)
+✔ rejects an existing pending review with a different submitter (0.5259ms)
+✔ processes an event without submittedBy using the authoritative article author (1.4004ms)
+✔ acknowledges an already processed event after the article leaves in_review (0.3604ms)
+✔ rejects an article with an invalid authoritative author ID (0.6059ms)
+✔ opens an automatic flag when the rule is met (6 of 8 unhelpful) (1.5543ms)
+✔ returns the existing open flag instead of a second re-review (0.1828ms)
+✔ refuses when the rule is not met (422) and runs no query (0.5303ms)
+✔ rejects invalid input (400) (0.2876ms)
+✔ only published articles can be flagged (404 / 409) (0.2503ms)
+✔ accepts a correctly signed request from Search (76.5953ms)
+✔ rejects unsigned, wrong-sender, tampered, old and wrong-secret requests (401) (21.7436ms)
+{"ts":"2026-11-28T04:00:40.236Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"POST","path":"/internal/auto-flags","ip":"::ffff:127.0.0.1","userId":null,"role":null,"status":401}
+✔ real server: /internal/auto-flags without a signature is rejected (401) (88.2251ms)
+✔ creates and saves a cryptographically random CSRF token (6.0196ms)
+✔ reuses an existing valid CSRF token (0.2827ms)
+✔ replaces an invalid existing CSRF token (0.3423ms)
+✔ does not return a token when session saving fails (0.2371ms)
+✔ rejects a missing session (0.2528ms)
+✔ creates a flag for a published article and records the reviewer (2.6828ms)
+✔ does not flag an article that is not published (0.8149ms)
+✔ returns 404 when the article does not exist (0.3359ms)
+✔ rejects an empty flag reason (0.2942ms)
+✔ rejects invalid pagination values (0.4666ms)
+✔ lists open flags and preserves them when Article Service is unavailable (0.4986ms)
+✔ resolves a flag and records reviewer and resolution (2.2405ms)
+✔ requires a non-empty resolution explanation (0.4248ms)
+✔ returns 404 when resolving a nonexistent flag (0.4446ms)
+✔ returns 409 when a flag was already resolved (0.3655ms)
+✔ a repeated report returns the existing open flag instead of a new re-review (0.4039ms)
+✔ a new report on an article without an open flag is not a duplicate (0.4557ms)
+✔ the author of an article cannot resolve its re-review (0.2991ms)
+✔ resolution fails closed when Article Service is unavailable (0.3794ms)
+✔ a re-review resolved concurrently by another editor returns 409 (0.3448ms)
+✔ healthy only for 200 with status ok (3.3405ms)
+✔ unhealthy when the database check fails (500) (0.3192ms)
+✔ unhealthy for an unexpected body or invalid JSON (0.298ms)
+✔ unhealthy when the API does not answer (0.357ms)
+✔ unhealthy when the API hangs longer than the timeout (214.2265ms)
+✔ script exits 0 when healthy and 1 when not (278.4055ms)
+✔ claims a notification before delivering it (5.2168ms)
+✔ moves uncertain Search delivery outcomes to reconciliation (0.5487ms)
+✔ marks a definite Search client rejection as failed (0.3768ms)
+✔ does not deliver when the notification cannot be claimed (0.3301ms)
+✔ does not treat a local delivered-state update failure as a Search failure (1.1454ms)
+✔ parses a comma-separated list and trims spaces (2.0249ms)
+✔ every listed origin may write (with a valid CSRF token) (0.8794ms)
+✔ a single origin still works exactly as before (0.7499ms)
+✔ unlisted, look-alike and missing origins are rejected with 403 (1.5448ms)
+✔ an allowed origin without a valid CSRF token is still rejected (0.4105ms)
+✔ an empty FRONTEND_ORIGIN allows nothing (0.3107ms)
+✔ queues a publication event with a stable UUID and payload (9.1416ms)
+✔ rejects a publication event without required identifiers (0.9461ms)
+✔ rejects invalid publication event identifiers (0.5421ms)
+✔ publishes a claimed event and marks it published (0.9797ms)
+✔ reschedules an event after an SNS delivery failure (0.7922ms)
+✔ does not publish when no event is available (0.2801ms)
+✔ does not classify a database completion error as an SNS failure (0.4857ms)
+✔ recovers abandoned publisher claims (0.3997ms)
+✔ returns claim_lost when an SNS failure cannot update the claimed event (1.8615ms)
+✔ moves an event to failed after reaching the maximum attempts (0.6982ms)
+✔ increases retry delay using exponential backoff (0.4843ms)
+✔ requeueFailed returns failed events to pending with a fresh retry budget (0.7871ms)
+✔ requeueFailed without eventId requeues all failed events (bounded) (0.2419ms)
+✔ requeueFailed rejects an invalid eventId without touching the database (0.3257ms)
+{"msg":"publication receipt","eventId":"123e4567-e89b-42d3-a456-426614174000","eventType":"editorial.publication.published","articleId":42,"status":"processed"}
+{"msg":"publication receipt","eventId":"123e4567-e89b-42d3-a456-426614174000","eventType":"editorial.publication.published","articleId":42,"status":"duplicate"}
+✔ records a valid SNS publication event (3.6553ms)
+✔ identifies a duplicate event without processing it twice (0.5849ms)
+✔ rejects malformed JSON (0.8617ms)
+✔ rejects an unsupported event type (0.3652ms)
+✔ rejects an invalid event ID (0.2961ms)
+✔ rejects invalid article identifiers (0.2714ms)
+✔ propagates database failures for SNS retry (0.3469ms)
+✔ rejects empty SNS batches (0.2074ms)
+✔ publish records the publication event and queues notification (17.4772ms)
+✔ publish rejects an article without an approved review (3.3106ms)
+✔ publish prevents authors from publishing their own articles (2.4693ms)
+✔ uncertain Article Service failures require reconciliation (3.2614ms)
+✔ definite Article Service rejections fail the publication operation (3.6134ms)
+✔ publication requiring reconciliation cannot be retried automatically (2.6298ms)
+✔ reconciliation finalizes an article already published remotely (3.2599ms)
+✔ reconciliation transitions an approved remote article before finalizing (3.8566ms)
+✔ reconciliation refuses unexpected remote article status (3.3295ms)
+✔ reconciliation refuses an operation that cannot be claimed (2.9194ms)
+✔ production default stays 300 requests per 15 minutes (2.4484ms)
+✔ a valid RATE_LIMIT_MAX is used for local load testing (0.3133ms)
+✔ invalid values fall back to 300 and never disable limiting (0.3486ms)
+✔ server.js has exactly one general /api limiter using the helper (0.6694ms)
+✔ default profile is production (3.4863ms)
+✔ loadtest profile relaxes limits outside production (0.2325ms)
+✔ loadtest profile is refused when NODE_ENV=production (0.2251ms)
+✔ unknown profile names fall back to production (0.2055ms)
+✔ explicit RATE_LIMIT_MAX is validated and still wins (0.2034ms)
+✔ a production limiter returns 429 after its budget (359.4057ms)
+✔ history retrieves events for the requested article in chronological order (2.7392ms)
+✔ history returns an empty array when no events exist (0.4067ms)
+✔ submit creates an operation and finalizes the pending review (11.3109ms)
+✔ submit rejects an article owned by another author (3.4351ms)
+✔ decide approves a pending review and records history (3.6484ms)
+✔ decide rejects with an explanation and returns the article to draft (2.0469ms)
+✔ decide prevents authors from reviewing their own articles (2.1781ms)
+✔ decide requires an explanation for rejection (2.1359ms)
+✔ uncertain Article Service failures require reconciliation (2.9274ms)
+✔ definite Article Service rejections fail the operation (1.8872ms)
+✔ reconcileReviewOperation finalizes a submission without repeating the remote transition (2.3028ms)
+✔ reconcileReviewOperation finalizes an approval without repeating the remote transition (2.2036ms)
+✔ reconcileReviewOperation leaves the operation unresolved when remote status does not match (1.984ms)
+✔ reconcileReviewOperation rejects an invalid operation ID (1.7318ms)
+✔ reconcileReviewOperation rejects when the operation cannot be claimed (1.7647ms)
+✔ queue defaults to pending and retrieves articles (2.0427ms)
+✔ queue accepts approved and rejected statuses (2.9569ms)
+✔ queue rejects invalid status without querying the database (1.3515ms)
+✔ queue excludes reviews whose articles no longer exist (1.2963ms)
+✔ disabled by default: nothing is fetched (2.4646ms)
+✔ parses comma separated secret IDs (1.4019ms)
+✔ loads only allow-listed keys and overrides .env values (133.7405ms)
+✔ never logs secret values (0.3202ms)
+✔ access denied: falls back to environment when not required (0.231ms)
+✔ fails closed when SECRETS_REQUIRED=true (0.47ms)
+✔ retries transient errors before succeeding (0.3415ms)
+✔ rejects a secret that is not a JSON object (0.3159ms)
+{"ts":"2026-11-28T04:00:40.317Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.330Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/editorial/flags","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.333Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/editorial/published","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.335Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/articles/1/history","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.355Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"POST","path":"/api/articles/1/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.357Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"POST","path":"/api/articles/1/submissions","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.359Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"PATCH","path":"/api/articles/1/publication","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+✔ S1: unauthenticated requests to protected review endpoints return 401 (real server) (109.6859ms)
+✔ S2: an author cannot approve, publish, list reviews or manage flags (403) (14.7104ms)
+✔ S3: an author cannot submit another author's article by changing the ID (403) (5.2895ms)
+✔ S3: a reviewer cannot approve an article they authored (403) (5.6551ms)
+✔ S4: state-changing requests without a valid CSRF token or Origin are rejected (403) (9.9456ms)
+✔ S5: SQL injection payloads in route IDs are rejected before any query (400) (15.7138ms)
+✔ S5: SQL injection payloads in text fields are sent as bound parameters, not SQL (5.2468ms)
+✔ S5: no Editorial source file builds SQL by interpolating values into query text (13.1255ms)
+✔ S6: XSS payloads are stored and returned as inert JSON text (7.3576ms)
+{"ts":"2026-11-28T04:00:40.443Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+✔ S6: real server sends headers that stop responses being run as HTML/script (5.2147ms)
+✔ S6: the Editorial frontend renders text with textContent, never innerHTML (0.9136ms)
+✔ S7: sessions with missing or tampered user data are denied (401) (8.5533ms)
+{"ts":"2026-11-28T04:00:40.459Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.461Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.462Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+✔ S7: a forged or tampered session cookie is denied by the real server (401) (9.1626ms)
+{"ts":"2026-11-28T04:00:40.469Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.471Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.472Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.473Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.474Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.475Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.475Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.476Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.477Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.477Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.478Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.479Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.479Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.480Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.481Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.482Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.482Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.483Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.484Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.485Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.485Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.486Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.487Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.488Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.489Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.490Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.491Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.491Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.492Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.493Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.494Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.494Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.495Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.496Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.497Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.499Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.500Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.501Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.503Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.504Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.504Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.505Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.506Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.507Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.508Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.509Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.509Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.510Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.511Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.511Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.512Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.513Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.513Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.514Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.515Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.515Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.516Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.517Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.517Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.518Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.519Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.519Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.520Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.521Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.522Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.523Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.523Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.524Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.525Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.525Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.526Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.527Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.527Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.528Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.528Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.529Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.530Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.530Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.531Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.531Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.532Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.534Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.535Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.535Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.536Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.537Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.537Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.538Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.539Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.539Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.540Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.541Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.541Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.542Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.543Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.543Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.544Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.544Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.545Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.546Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.547Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.547Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.548Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.548Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.549Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.550Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.550Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.551Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.552Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.552Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.553Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.553Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.554Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.555Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.555Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.556Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.556Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.557Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.558Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.558Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.559Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.559Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.560Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.560Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.561Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.562Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.564Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.565Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.565Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.566Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.566Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.567Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.568Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.568Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.569Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.570Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.570Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.571Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.571Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.572Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.572Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.573Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.573Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.574Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.575Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.575Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.576Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.576Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.577Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.577Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.578Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.579Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.579Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.580Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.580Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.581Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.581Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.582Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.582Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.583Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.583Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.584Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.585Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.585Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.586Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.586Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.587Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.587Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.588Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.589Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.589Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.590Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.591Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.591Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.592Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.593Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.593Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.594Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.594Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.595Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.596Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.596Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.597Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.598Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.598Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.599Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.600Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.600Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.601Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.602Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.602Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.603Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.604Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.604Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.605Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.606Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.606Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.607Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.607Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.608Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.609Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.609Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.610Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.611Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.611Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.612Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.613Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.613Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.614Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.614Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.615Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.616Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.616Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.617Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.618Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.619Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.619Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.620Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.621Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.621Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.622Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.623Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.623Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.624Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.625Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.625Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.626Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.627Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.627Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.628Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.630Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.631Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.632Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.633Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.633Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.634Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.634Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.635Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.635Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.636Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.637Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.637Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.638Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.638Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.639Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.639Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.640Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.641Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.641Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.642Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.642Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.643Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.643Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.644Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.645Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.645Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.646Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.646Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.647Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.647Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.648Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.648Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.649Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.650Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.650Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.651Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.651Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.652Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.652Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.653Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.654Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.654Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.655Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.656Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.656Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.657Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.657Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.658Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.658Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.659Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.660Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.660Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.661Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.661Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.662Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.663Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.663Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.664Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.664Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.665Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.666Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.666Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.667Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.667Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.668Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.669Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.669Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.670Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.670Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+{"ts":"2026-11-28T04:00:40.671Z","type":"security_event","service":"supporthub-editorial-service","event":"authentication_failed","method":"GET","path":"/api/reviews","ip":"127.0.0.1","userId":null,"role":null,"status":401}
+✔ S8: excessive API requests are rate limited (429) by the real server (212.2482ms)
+✔ unauthenticated users cannot access protected functions (2.4669ms)
+✔ authors can access author functions (0.3025ms)
+✔ readers cannot access author functions (0.1753ms)
+✔ reviewers can access editorial functions (0.1553ms)
+✔ admins can access editorial functions (0.191ms)
+✔ legacy editors remain temporarily compatible (0.1874ms)
+✔ authors cannot access reviewer functions (0.1796ms)
+✔ readers cannot access reviewer functions (0.29ms)
+✔ invalid user IDs cannot authenticate (0.3767ms)
+✔ role comparison is case insensitive (0.2876ms)
+✔ browser writes reject a missing Origin (0.5723ms)
+✔ browser writes reject an incorrect Origin (0.4545ms)
+✔ browser writes reject a missing CSRF token (0.2781ms)
+✔ browser writes reject malformed CSRF tokens (0.427ms)
+✔ browser writes reject an incorrect CSRF token (0.4242ms)
+✔ browser writes accept a valid Origin and CSRF token (0.3153ms)
+✔ safe GET requests do not require Origin or CSRF tokens (0.191ms)
+✔ cron endpoint rejects a missing secret (0.395ms)
+✔ cron endpoint rejects a secret shorter than 32 characters (0.2355ms)
+✔ cron endpoint rejects an incorrect secret (0.921ms)
+✔ cron endpoint accepts the correct secret (0.2653ms)
+✔ signs internal requests in Article Service format (3.0436ms)
+✔ rejects an invalid operation ID without making an HTTP request (1.1149ms)
+✔ sends operation ID in the signed Article Service transition request (1.3151ms)
+✔ validates positive numeric identifiers (1.6095ms)
+✔ rejects non-decimal and padded identifiers (0.573ms)
+✔ trims comments and limits length (0.4142ms)
+✔ rejection requires a non-empty explanation (0.6291ms)
+✔ rejection accepts a valid explanation (0.4064ms)
+✔ approval does not require comments (0.312ms)
+✔ review comments cannot exceed 2000 characters (0.3748ms)
+✔ createOperation inserts and commits an operation (1.616ms)
+✔ createOperation maps duplicate active operations to HTTP 409 (0.626ms)
+✔ getOperation returns the matching operation or null (0.2079ms)
+✔ claimNext uses a matching claim-token parameter (3.441ms)
+✔ reschedule uses four matching parameters (0.3334ms)
+✔ requireReconciliation uses the operation and claim token (0.1993ms)
+✔ claimOperation claims only the specified pending operation (0.2663ms)
+✔ completeOperation requires the matching claim token (2.1792ms)
+✔ failOperation requires the matching claim token (0.3616ms)
+✔ getActivePublication finds active publication operations for an article (0.3735ms)
+✔ claimPublication reuses the persisted operation ID (0.2578ms)
+✔ claimPublication only claims an eligible publication operation (0.1297ms)
+✔ claimReviewOperationForReconciliation claims only eligible review operations (0.2173ms)
+✔ claimReviewOperationForReconciliation returns null when no eligible operation exists (0.1204ms)
+ℹ tests 197
+ℹ suites 0
+ℹ pass 197
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1163.6468
