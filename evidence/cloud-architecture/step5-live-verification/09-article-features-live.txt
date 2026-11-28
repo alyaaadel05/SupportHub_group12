@@ -1,0 +1,19 @@
+Article features live check 2026-11-27T23:20:13.034Z via https://supporthub-group12.pages.dev (author al***@gmail.com)
+SupportHub/Article metrics since 2026-11-27T23:15:13.026Z, before: {"ArticlesCreated":0,"ArticlesSubmitted":0,"BackupsExported":0,"BackupFailures":0}
+PASS | Backup fix | S3 backup export (Secrets Manager read + PutObject) | POST /api/articles/23/versions/32/export -> 200 | s3://supporthub-article-backups/articles/23/versions/32.json 447 B 2026-11-27T23:20:27+00:00
+PASS | Backup fix | S3 backup read-back (GetObject) | GET /api/articles/23/versions/32/export -> 200 | articleId=23 versionId=32
+PASS | A | create verification draft | POST /api/articles -> 201 | article 24
+PASS | A | back up version to S3 | POST /api/articles/24/versions/33/export -> 200 | articles/24/versions/33.json
+PASS | A | edit the draft after the backup | PATCH /api/articles/24 -> 200 | Live feature A restore featlivemwzltsxx (edited)
+PASS | A | restore draft from S3 backup | POST /api/articles/24/versions/33/restore-backup -> 200 | restoredFrom=articles/24/versions/33.json
+PASS | A | Neon: draft content equals the backed-up version | (read-only SELECT, article role) -> - | status=draft title="Live feature A restore featlivemwzltsxx"
+info | A | article 24 now has 3 versions (create, edit, restore)
+PASS | C | create short verification draft | POST /api/articles -> 201 | article 25
+PASS | C | submit a too-short draft -> 422 with issues | POST /api/articles/25/submit -> 422 | {"error":"Content must be at least 100 characters before it can be submitted for review (currently 20).","issues":["Content must be at least
+PASS | C | Neon: still draft, no outbox event | (read-only SELECT, article role) -> - | status=draft outbox_events=0
+SupportHub/Article metrics after: {"ArticlesCreated":2,"ArticlesSubmitted":0,"BackupsExported":2,"BackupFailures":0} diff {"ArticlesCreated":2,"ArticlesSubmitted":0,"BackupsExported":2,"BackupFailures":0}
+PASS | B | ArticlesCreated +2 (drafts A and C) | cloudwatch get-metric-statistics SupportHub/Article -> - | +2
+PASS | B | BackupsExported +2 (article 23 and draft A) | cloudwatch get-metric-statistics SupportHub/Article -> - | +2
+PASS | B | ArticlesSubmitted +0 (the 422 is not counted) | cloudwatch get-metric-statistics SupportHub/Article -> - | +0
+PASS | B | BackupFailures +0 | cloudwatch get-metric-statistics SupportHub/Article -> - | +0
+Total: 14 passed, 0 failed. Verification drafts left in place: 24, 25 (labelled featlivemwzltsxx).
