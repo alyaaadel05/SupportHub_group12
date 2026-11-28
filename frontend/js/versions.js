@@ -390,6 +390,50 @@ async function restoreVersion() {
   }
 }
 
+// Export the selected article version to S3.
+async function exportToBackup() {
+  if (!currentArticleId) {
+    versionMessage("Load an article first.");
+    return;
+  }
+
+  const versionId = document.getElementById(
+    "restore-version"
+  ).value;
+
+  if (!versionId) {
+    versionMessage("Select a version to back up.");
+    return;
+  }
+
+  const button = document.getElementById(
+    "export-backup-button"
+  );
+
+  button.disabled = true;
+
+  try {
+    versionMessage("Exporting version to S3...");
+
+    await api(
+      "/articles/" +
+      currentArticleId +
+      "/versions/" +
+      encodeURIComponent(versionId) +
+      "/export",
+      { method: "POST" }
+    );
+
+    versionMessage(
+      "Article version successfully exported to S3 backup."
+    );
+  } catch (error) {
+    versionMessage(error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 // Restore the draft from the selected version's S3 backup.
 async function restoreFromBackup() {
   if (!currentArticleId) {
@@ -485,6 +529,13 @@ async function initializeVersionsPage() {
   ).addEventListener(
     "click",
     restoreFromBackup
+  );
+
+  document.getElementById(
+    "export-backup-button"
+  ).addEventListener(
+    "click",
+    exportToBackup
   );
 
   // Support URLs such as:
