@@ -221,6 +221,7 @@ services:
       PORT: "3004"
       SECRET_IDS: supporthub/shared/session,supporthub/shared/service-hmac,supporthub/shared/database,supporthub/search/runtime
       ARTICLE_SERVICE_URL: http://article:3001
+      EDITORIAL_SERVICE_URL: http://editorial:3002
       DYNAMODB_COUNTERS_TABLE: supporthub-search-counters
       CLOUDWATCH_NAMESPACE: SupportHub/Search
       METRICS_FLUSH_MS: "5000"
